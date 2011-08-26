@@ -1,0 +1,29 @@
+#!/bin/bash
+
+IFS=$'\n'
+
+#Produce disk sizes
+for line in $(df -T -x tmpfs -x devtmpfs -P);do
+	if [[ $line != *Mounted* ]];then
+		name=$(echo $line|tr -s ' '|cut -d ' ' -f 7)
+		used=$(echo $line|tr -s ' '|tr -d '%'|cut -d ' ' -f 6)
+		echo -e "disk_$name:$used"
+	fi
+done
+
+#produce inode size
+for line in $(df -T -x tmpfs -x devtmpfs -P -i);do
+	if [[ $line != *Mounted* ]];then
+		name=$(echo $line|tr -s ' '|cut -d ' ' -f 7)
+		used=$(echo $line|tr -s ' '|tr -d '%'|cut -d ' ' -f 6)
+		echo -e "inode_$name:$used"
+	fi
+done
+
+#optional output
+echo -e "~==.==~\n"
+echo -e "Disk Size:\n"
+df -h -T -x tmpfs -x devtmpfs
+
+echo -e "\nDisk Inodes:\n"
+df -h -T -x tmpfs -x devtmpfs -i
