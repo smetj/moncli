@@ -1,0 +1,9 @@
+#! /bin/bash
+
+string="$(ps faux)"
+
+echo -e "$string"
+echo '~==.==~'
+echo -e "$string"
+echo -e "\n$0\n";
+

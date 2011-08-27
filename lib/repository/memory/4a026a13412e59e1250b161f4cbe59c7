@@ -1,0 +1,19 @@
+#!/usr/bin/perl
+use strict;
+use warnings;
+
+open MEMINFO,'/proc/meminfo';
+while (<MEMINFO>){
+	if ( $_ =~ /(^.*?):\s*(\d*)/ ){
+		printf ( "%s:%s\n",lc($1),$2 );
+	}
+}
+close MEMINFO;
+print "~==.==~\n";
+print "Values in MB:\n";
+open FREE,'/usr/bin/free -t -m||/bin/free -t m|';
+while (<FREE>){
+	print $_;
+}
+close FREE;
+print "\nMD5: $0\n";
