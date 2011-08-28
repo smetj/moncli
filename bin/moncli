@@ -24,7 +24,7 @@ from time import strftime, gmtime
 from socket import gethostname
 from random import randint
 from apscheduler.scheduler import Scheduler
-from platform import system
+from platform import system,machine
 __version__='0.1.6'
 
 class Worker(threading.Thread):
@@ -391,9 +391,10 @@ class PoolMaster(threading.Thread):
 		for job in self.threads:
 			job.join()
 class RepositoryManager():
-	def __init__(self,local_repository,remote_repository):
+	def __init__(self,local_repository,remote_repository,logging):
 		self.local_repository=local_repository
 		self.remote_repository=remote_repository
+		self.logging=logging
 		if self.local_repository[-1] != '/':
 			self.local_repository += '/'
 		if self.remote_repository != None and self.remote_repository[-1] != '/':
@@ -402,28 +403,31 @@ class RepositoryManager():
 		if version == '':
 			return self.__getNewest(local_repository=self.local_repository,command=command)
 		else:
-			if not os.path.exists(self.local_repository+system()):
-				self.__createCommand(dir=self.local_repository+system())			
-			if not os.path.exists(self.local_repository+system()+'/'+command):
-				self.__createCommand(dir=self.local_repository+system()+'/'+command)
-			if not os.path.isfile(self.local_repository+system()+'/'+command+'/'+version) and self.remote_repository != '':
+			if not os.path.exists(self.local_repository+command):
+				self.__createCommand(dir=self.local_repository+command)			
+			if not os.path.isfile(self.local_repository+command+'/'+version) and self.remote_repository != '':
 				self.__downloadVersion(self.remote_repository,self.local_repository,command,version)
-			return self.local_repository+system()+'/'+command+'/'+version
+			return self.local_repository+'/'+command+'/'+version
 	def __createCommand(self,dir):
 		os.mkdir(dir)
 	def __getNewest(self,local_repository,command):
-		filelist = os.listdir(local_repository+system()+'/'+command)
+		filelist = os.listdir(local_repository+'/'+command)
 		filelist = filter(lambda x: not os.path.isdir(x), filelist)
-		newest = max(filelist, key=lambda x: os.stat(local_repository+system()+'/'+command+'/'+x).st_mtime)
-		return local_repository+system()+'/'+command+'/'+newest
+		newest = max(filelist, key=lambda x: os.stat(local_repository+'/'+command+'/'+x).st_mtime)
+		return local_repository+'/'+command+'/'+newest
 	def __downloadVersion(self,remote_repository,local_repository,command,version):
-		response = urlopen(remote_repository+system()+'/'+command+'/'+version)
-		output = open ( local_repository+system()+'/'+command+'/'+version, 'w' )
+		full_url = "%s%s(%s)/%s/%s"%(remote_repository,system(),machine(),command,version)
+		self.logging.put(['Normal','Downloading update %s.'%(full_url)])
+		try:
+			response = urlopen(full_url)
+		except Exception as err:
+			raise Exception (str(err) + " - "+full_url )
+		output = open ( local_repository+'/'+command+'/'+version, 'w' )
 		output.write(response.read())
 		response.close()
 		output.close()
 		#Make executable
-		os.chmod(local_repository+system()+'/'+command+'/'+version,0750)
+		os.chmod(local_repository+'/'+command+'/'+version,0750)
 class JobScheduler():
 	def __init__(self,cache_file,incoming_queue,logging,random_wait=False):
 		self.cache_file=cache_file
@@ -621,7 +625,8 @@ class Server():
 
 		#Create a repository manager object
 		repository_manager = RepositoryManager( local_repository = self.local_repository,
-							remote_repository = self.remote_repository)
+							remote_repository = self.remote_repository,
+							logging=log_generator.queue)
 		
 		#Initialize the pool thread
 		from monitoring.communication import SubmitListener
