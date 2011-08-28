@@ -1,6 +1,0 @@
-#!/bin/bash
-
-echo "seconds:$(cat /proc/uptime |cut -f '1' -d ' ')"
-echo "~==.==~"
-uptime
-echo -e "\nMD5: $0\n"
