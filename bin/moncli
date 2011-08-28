@@ -24,8 +24,8 @@ from time import strftime, gmtime
 from socket import gethostname
 from random import randint
 from apscheduler.scheduler import Scheduler
-
-__version__='0.1.7'
+from platform import system
+__version__='0.1.6'
 
 class Worker(threading.Thread):
 	'''A worker processes receives and executes an incoming request, creates a report, reschedules it if required and submits it to output queue.'''
@@ -402,21 +402,23 @@ class RepositoryManager():
 		if version == None:
 			return self.__getNewest(local_repository=self.local_repository,command=command)
 		else:
-			if not os.path.exists(self.local_repository+command):
-				self.__createCommand(dir=self.local_repository+command)
-			if not os.path.isfile(self.local_repository+command+'/'+version) and self.remote_repository != None:
+			if not os.path.exists(self.local_repository+system()):
+				self.__createCommand(dir=self.local_repository+system())			
+			if not os.path.exists(self.local_repository+system()+'/'+command):
+				self.__createCommand(dir=self.local_repository+system()+'/'+command)
+			if not os.path.isfile(self.local_repository+system()+'/'+command+'/'+version) and self.remote_repository != None:
 				self.__downloadVersion(self.remote_repository,self.local_repository,command,version)
-			return self.local_repository+command+'/'+version
+			return self.local_repository+system()+'/'+command+'/'+version
 	def __createCommand(self,dir):
 		os.mkdir(dir)
 	def __getNewest(self,local_repository,command):
-		filelist = os.listdir(local_repository+command)
+		filelist = os.listdir(local_repository+system()+'/'+command)
 		filelist = filter(lambda x: not os.path.isdir(x), filelist)
-		newest = max(filelist, key=lambda x: os.stat(local_repository+command+'/'+x).st_mtime)
-		return local_repository+command+'/'+newest
+		newest = max(filelist, key=lambda x: os.stat(local_repository+system()+'/'+command+'/'+x).st_mtime)
+		return local_repository+system()+'/'+command+'/'+newest
 	def __downloadVersion(self,remote_repository,local_repository,command,version):
-		response = urlopen(remote_repository+command+'/'+version)
-		output = open ( local_repository+command+'/'+version, 'w' )
+		response = urlopen(remote_repository+system()+'/'+command+'/'+version)
+		output = open ( local_repository+system()+'/'+command+'/'+version, 'w' )
 		output.write(response.read())
 		response.close()
 		output.close()
