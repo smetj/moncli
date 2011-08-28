@@ -55,6 +55,7 @@ class Event():
 			self.report.weight_map = self.request.weight_map
 			self.report.format = self.request.format
 			self.report.plugin = self.request.plugin
+			self.report.pluginVersion = self.request.pluginVersion
 			self.report.pluginTimeout = self.request.pluginTimeout
 			self.report.pluginParameters = self.request.pluginParameters
 		if self.request.type == 'systemRequest':
@@ -66,8 +67,7 @@ class Event():
 			self.report.target = self.request.target
 			self.report.cycle = self.request.cycle
 			self.report.plugin = self.request.plugin
-			self.report.pluginTimeout = self.request.pluginTimeout		
-			self.report.pluginParameters = self.request.pluginParameters
+
 class Report():
 	'''Create a report event object to be injected into messaging infrastructure.
 	A report can but does not have to be triggered by a request.'''
@@ -97,6 +97,7 @@ class Report():
 		self.weight_map=None
 		self.plugin=None
 		self.pluginTimeout=None
+		self.pluginVersion=None		
 		self.pluginParameters=None
 		self.translator=Translate()
 	def addEvaluator(self,name,status,value,metric,evaluator,thresholds):
@@ -119,6 +120,7 @@ class Report():
 				'status':self.status,
 				'message':self.message,
 				'plugin':self.plugin,
+				'pluginVersion':self.pluginVersion,
 				'pluginTimeout':self.pluginTimeout,
 				'pluginParameters':self.pluginParameters,
 				'metrics':self.metrics,
@@ -141,7 +143,7 @@ class Report():
 class ReportRequest():
 	def __init__(self,logging=None):
 		self.variables = [ 'UUID','timezone','time','FQDN','type','reason','cycle','subject','destination','message','target',
-				'plugin','pluginTimeout','pluginParameters','evaluators','tags','format','weight_map' ]
+				'plugin','pluginVersion','pluginTimeout','pluginParameters','evaluators','tags','format','weight_map' ]
 		for variable in self.variables:
 			setattr(self,variable,None)
 				
@@ -168,6 +170,7 @@ class ReportRequest():
 			'message':self.message,
 			'target':self.target,
 			'plugin':self.plugin,
+			'pluginVersion':self.pluginVersion,
 			'pluginTimeout':self.pluginTimeout,
 			'pluginParameters':self.pluginParameters,
 			'evaluators':self.evaluators,
@@ -225,6 +228,7 @@ class ReportRequest():
 						raise InvalidReport( 'Evaluators syntax does not contain metric.')
 			request['message']
 			request['pluginParameters']
+			request['pluginVersion']
 			request['evaluators']
 			request['tags']
 			request['weight_map']
@@ -349,8 +353,10 @@ class Translate():
 			performance_data=''
 		
 		
-		if report['format'] == "nagios:service":	
+		if report['format'] == "nagios:service":
 			translated_status='3'
+			if report['status'] == None:
+				report['status'] = 'unknown'
 			if re.match(report['status'], 'ok', re.IGNORECASE):
 				translated_status='0'
 			elif re.match(report['status'], 'warning', re.IGNORECASE):

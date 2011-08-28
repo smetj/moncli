@@ -58,8 +58,10 @@ class Worker(threading.Thread):
 			if event.request.type == 'reportRequest':
 				try:
 					self.logging.put(['Normal','Worker received a request type report named %s.%s'%(event.request.subject,event.request.target)])
+					#Get plugin
+					command = self.command(command=self.document['plugin'],version=self.document['pluginVersion'])
 					#Execute plugin
-					(event.report.raw,event.report.verbose,event.report.metrics) = self.execute.plugin(	command=self.command,
+					(event.report.raw,event.report.verbose,event.report.metrics) = self.execute.plugin(	command=command,
 																parameters=event.request.pluginParameters,
 																timeout=event.request.pluginTimeout)
 					#Calculate each evalutor and global status
@@ -370,11 +372,9 @@ class PoolMaster(threading.Thread):
 					document=document['document']
 				else:
 					self.scheduler.schedule(document)
-				
-				command = self.repository_manager.getExecutable(command=document['plugin'],version=document.get('plugin_version',None))
-				
+						
 				self.threads.append(	Worker(	document=document,
-								command=command,
+								command=self.repository_manager.getExecutable,
 								outgoing_callback=self.outgoing_callback,
 								system_commands=self.system_commands,
 								execute=self.execute,
@@ -398,15 +398,15 @@ class RepositoryManager():
 			self.local_repository += '/'
 		if self.remote_repository != None and self.remote_repository[-1] != '/':
 			self.remote_repository += '/'
-	def getExecutable(self,command,version=None):
-		if version == None:
+	def getExecutable(self,command,version=''):
+		if version == '':
 			return self.__getNewest(local_repository=self.local_repository,command=command)
 		else:
 			if not os.path.exists(self.local_repository+system()):
 				self.__createCommand(dir=self.local_repository+system())			
 			if not os.path.exists(self.local_repository+system()+'/'+command):
 				self.__createCommand(dir=self.local_repository+system()+'/'+command)
-			if not os.path.isfile(self.local_repository+system()+'/'+command+'/'+version) and self.remote_repository != None:
+			if not os.path.isfile(self.local_repository+system()+'/'+command+'/'+version) and self.remote_repository != '':
 				self.__downloadVersion(self.remote_repository,self.local_repository,command,version)
 			return self.local_repository+system()+'/'+command+'/'+version
 	def __createCommand(self,dir):
@@ -422,6 +422,8 @@ class RepositoryManager():
 		output.write(response.read())
 		response.close()
 		output.close()
+		#Make executable
+		os.chmod(local_repository+system()+'/'+command+'/'+version,0750)
 class JobScheduler():
 	def __init__(self,cache_file,incoming_queue,logging,random_wait=False):
 		self.cache_file=cache_file
