@@ -70,6 +70,7 @@ GetOptions (	"url:s"			=> \$options{url},
 		"message:s"		=> \$options{message},
 		"target:s"		=> \$options{target},
 		"plugin:s"		=> \$options{plugin},
+		"pluginHash:s"		=> \$options{pluginHash},
 		"pluginTimeout:i"	=> \$options{pluginTimeout},
 		"pluginParameters:s"	=> \$options{pluginParameters},
 		"evaluators:s"		=> \$options{evaluators},
@@ -200,6 +201,7 @@ Data mode parameters:
 		--target 		The name of of the Host object in Nagios.
 		--subject 		The name of the service in Nagios.
 		--plugin 		The name of the plugin script to execute (located in the --repo directory).
+		--hash			The md5sum of the plugin to execute.
 		--destination 		The destination (in json format) to which the the report has to go to.
 		--evaluators 		The evaluator definitions in json format.
 		--nagiosType		Can be either "service" or "host".  Determines the result type for Nagios.
@@ -221,7 +223,8 @@ request_moncli.pl report \
 	--timeout 60 \
 	--target 'sandbox' \
 	--subject 'Memory' \
-	--plugin 'memory.py' \
+	--plugin 'memory' \
+	--pluginhash 'f4f2b50762bf835ce86b16a1576a4e70' \
 	--destination '{	"type":"nscaweb", 
 				"locations":["http://localhost:5668/queue"],
 				"username":"default", 
