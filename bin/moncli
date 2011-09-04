@@ -25,6 +25,7 @@ from socket import gethostname
 from random import randint
 from apscheduler.scheduler import Scheduler
 from platform import system,machine
+from hashlib import md5
 __version__='0.1.6'
 
 class Worker(threading.Thread):
@@ -59,10 +60,11 @@ class Worker(threading.Thread):
 				try:
 					self.logging.put(['Normal','Worker received a request type report named %s.%s'%(event.request.subject,event.request.target)])
 					#Get plugin
-					command = self.command(command=self.document['plugin'],version=self.document['pluginVersion'])
+					command = self.command(command=self.document['plugin'],hash=self.document['pluginHash'])
 					#Execute plugin
 					(event.report.raw,event.report.verbose,event.report.metrics) = self.execute.plugin(	command=command,
 																parameters=event.request.pluginParameters,
+																hash=event.request.pluginHash,
 																timeout=event.request.pluginTimeout)
 					#Calculate each evalutor and global status
 					global_status = StatusCalculator(weight_map=event.request.weight_map)
@@ -173,7 +175,7 @@ class Executer():
 		self.caching=caching
 		self.logging=logging
 		self.cache=Manager().dict()
-	def plugin(self,command=None,parameters=None,timeout=30):
+	def plugin(self,command=None,parameters=None,hash=None,timeout=30):
 		normal_output=[]
 		error_output=[]
 		errors=None
@@ -399,35 +401,36 @@ class RepositoryManager():
 			self.local_repository += '/'
 		if self.remote_repository != None and self.remote_repository[-1] != '/':
 			self.remote_repository += '/'
-	def getExecutable(self,command,version=''):
-		if version == '':
-			return self.__getNewest(local_repository=self.local_repository,command=command)
-		else:
-			if not os.path.exists(self.local_repository+command):
-				self.__createCommand(dir=self.local_repository+command)			
-			if not os.path.isfile(self.local_repository+command+'/'+version) and self.remote_repository != '':
-				self.__downloadVersion(self.remote_repository,self.local_repository,command,version)
-			return self.local_repository+'/'+command+'/'+version
+	def getExecutable(self,command,hash=None):
+		if not os.path.exists(self.local_repository+command):
+			self.__createCommand(dir=self.local_repository+command)			
+		if not os.path.isfile(self.local_repository+command+'/'+hash) and self.remote_repository != '':
+			self.__downloadVersion(self.remote_repository,self.local_repository,command,hash)
+		if self.__checkHash(fullpath=self.local_repository+'/'+command+'/'+hash,file=hash) == True:
+			return self.local_repository+'/'+command+'/'+hash
+	def __checkHash(self,fullpath,file):
+		plugin = open(fullpath,'r')
+		plugin_hash = md5()
+		plugin_hash.update((''.join(plugin.readlines())))
+		plugin.close()
+		if file != plugin_hash.hexdigest():
+			raise Exception ( 'Plugin filename does not match its hash value.' )
+		return True	
 	def __createCommand(self,dir):
 		os.mkdir(dir)
-	def __getNewest(self,local_repository,command):
-		filelist = os.listdir(local_repository+'/'+command)
-		filelist = filter(lambda x: not os.path.isdir(x), filelist)
-		newest = max(filelist, key=lambda x: os.stat(local_repository+'/'+command+'/'+x).st_mtime)
-		return local_repository+'/'+command+'/'+newest
-	def __downloadVersion(self,remote_repository,local_repository,command,version):
-		full_url = "%s%s(%s)/%s/%s"%(remote_repository,system(),machine(),command,version)
+	def __downloadVersion(self,remote_repository,local_repository,command,hash):
+		full_url = "%s%s(%s)/%s/%s"%(remote_repository,system(),machine(),command,hash)
 		self.logging.put(['Normal','Downloading update %s.'%(full_url)])
 		try:
 			response = urlopen(full_url)
 		except Exception as err:
 			raise Exception (str(err) + " - "+full_url )
-		output = open ( local_repository+'/'+command+'/'+version, 'w' )
+		output = open ( local_repository+'/'+command+'/'+hash, 'w' )
 		output.write(response.read())
 		response.close()
 		output.close()
 		#Make executable
-		os.chmod(local_repository+'/'+command+'/'+version,0750)
+		os.chmod(local_repository+'/'+command+'/'+hash,0750)
 class JobScheduler():
 	def __init__(self,cache_file,incoming_queue,logging,random_wait=False):
 		self.cache_file=cache_file

@@ -1,0 +1,61 @@
+ _____         _____ _ _ 
+|     |___ ___|     | |_|
+| | | | . |   |   --| | |
+|_|_|_|___|_|_|_____|_|_|
+                         
+
+Monli is a generic MONitoring CLIent which executes and processes requests on an external system in order to interact with the host's 
+local information sources which are normally not available over the network. Moncli then forwards these check results to the destination 
+of choice in one of the supported formats.
+
+Moncli has following features:
+
+* Easy but powerful configuration:
+	Moncli reacts upon JSON configuration documents which are submitted into its built in webserver. All characteristics of how 
+	Moncli should handle a check, are in that JSON document you submit. This allows you to manage the configuration of your checks
+	from an external system.
+
+* Have more checks on your monitoring server:
+	Moncli has a built in scheduler. This scheduler receives a one time configuration of what to execute and evaluate. The 
+	scheduler repeats that check at the cycle you defined in this configuration. From that moment on, the results just flow 
+	into your monitoring system as passive checks without any effort required from your Monitoring server's scheduler. That 
+	significantly offloads the load on your monitoring server. Changing the properties of such a scheduled check is as 
+	simple as just submitting a new configuration to Moncli. The status of the scheduler along with the configurations is 
+	also written to disk on regular intervals so Moncli just continues working after a restart.
+
+* Simplify plugin/check development:
+	Moncli uses as a data source plugins which only have to produce key/value pairs. Creating a script which only produces 
+	that kind of information is pretty easy and makes development of plugins accessible to non programmers.
+
+* Improve plugin quality:
+	Moncli has all evaluation logic and other goodies built in so you don't have to worry about that when creating plugins.
+	This standardizes the results more and improves the level of plugin quality.
+
+* Deliver more helpful information:
+	Moncli plugins can optionally produce verbose information at your choice which rolls up into your Nagios interface. 
+	This is helpful for engineers who are debugging a certain problem.
+
+* Built-in plugin update system:
+	Moncli has a built-in update system which allows you to transparently update the plugins from a centralized repository.
+
+* Resilience:
+	Moncli submits check results into one or multiple monitoring servers. This is currently done over NRDP or NSCAweb. 
+	When Nagios or any of the forwarders becomes unavailable, then Moncli just queues the results and submits them when 
+	its possible.
+
+* Security:
+	When desired, then Moncli can do all communication over https and you have PAM authentication at your disposal.
+	Only plugins with the correct hash will be executed which prevents the execution of changed or non conform plugins.
+
+* Compatibility:
+	Moncli works together with monitoring frameworks which are based upon or derived from Nagios Core. It allows you 
+	to work with Nagios as you are used to it.
+
+* Ease of distribution:
+	Moncli is written in Python. Once you have all its dependencies installed, you can "freeze" Moncli into a stand 
+	alone executable, which facilitates distribution to your nodes.
+
+
+For installation instruction please visit:
+
+	http://www.smetj.net/wiki/Moncli_documentation

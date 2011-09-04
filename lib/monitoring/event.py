@@ -55,7 +55,7 @@ class Event():
 			self.report.weight_map = self.request.weight_map
 			self.report.format = self.request.format
 			self.report.plugin = self.request.plugin
-			self.report.pluginVersion = self.request.pluginVersion
+			self.report.pluginHash = self.request.pluginHash
 			self.report.pluginTimeout = self.request.pluginTimeout
 			self.report.pluginParameters = self.request.pluginParameters
 		if self.request.type == 'systemRequest':
@@ -97,7 +97,7 @@ class Report():
 		self.weight_map=None
 		self.plugin=None
 		self.pluginTimeout=None
-		self.pluginVersion=None		
+		self.pluginHash=None		
 		self.pluginParameters=None
 		self.translator=Translate()
 	def addEvaluator(self,name,status,value,metric,evaluator,thresholds):
@@ -120,7 +120,7 @@ class Report():
 				'status':self.status,
 				'message':self.message,
 				'plugin':self.plugin,
-				'pluginVersion':self.pluginVersion,
+				'pluginHash':self.pluginHash,
 				'pluginTimeout':self.pluginTimeout,
 				'pluginParameters':self.pluginParameters,
 				'metrics':self.metrics,
@@ -143,7 +143,7 @@ class Report():
 class ReportRequest():
 	def __init__(self,logging=None):
 		self.variables = [ 'UUID','timezone','time','FQDN','type','reason','cycle','subject','destination','message','target',
-				'plugin','pluginVersion','pluginTimeout','pluginParameters','evaluators','tags','format','weight_map' ]
+				'plugin','pluginHash','pluginTimeout','pluginParameters','evaluators','tags','format','weight_map' ]
 		for variable in self.variables:
 			setattr(self,variable,None)
 				
@@ -170,7 +170,7 @@ class ReportRequest():
 			'message':self.message,
 			'target':self.target,
 			'plugin':self.plugin,
-			'pluginVersion':self.pluginVersion,
+			'pluginHash':self.pluginHash,
 			'pluginTimeout':self.pluginTimeout,
 			'pluginParameters':self.pluginParameters,
 			'evaluators':self.evaluators,
@@ -212,6 +212,8 @@ class ReportRequest():
 				raise InvalidReport( 'target is not valid.' )
 			if request['plugin'] == '' or request['plugin'] == None:
 				raise InvalidReport( 'plugin is not valid.' )
+			if request['pluginHash'] == '' or request['pluginHash'] == None:
+				raise InvalidReport( 'pluginHash has an invalid value.' )
 			if request['pluginTimeout']  < 1:
 				raise InvalidReport( 'pluginTimeout is not valid.' )
 			if request['evaluators'] != '' or request['evaluators'] != None:
@@ -228,7 +230,7 @@ class ReportRequest():
 						raise InvalidReport( 'Evaluators syntax does not contain metric.')
 			request['message']
 			request['pluginParameters']
-			request['pluginVersion']
+			request['pluginHash']
 			request['evaluators']
 			request['tags']
 			request['weight_map']

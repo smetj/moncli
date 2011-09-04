@@ -16,4 +16,4 @@ while (<FREE>){
 	print $_;
 }
 close FREE;
-print "\nMD5: $0\n";
+print "\nSource: $0\n";
