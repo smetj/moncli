@@ -201,7 +201,7 @@ Data mode parameters:
 		--target 		The name of of the Host object in Nagios.
 		--subject 		The name of the service in Nagios.
 		--plugin 		The name of the plugin script to execute (located in the --repo directory).
-		--hash			The md5sum of the plugin to execute.
+		--pluginHash		The md5sum of the plugin to execute.
 		--destination 		The destination (in json format) to which the the report has to go to.
 		--evaluators 		The evaluator definitions in json format.
 		--nagiosType		Can be either "service" or "host".  Determines the result type for Nagios.
