@@ -664,7 +664,7 @@ class Help():
 		pass
 	def usage(self):
 		print ('Moncli %s Copyright 2011 by Jelle Smet <web@smetj.net>' %(__version__))
-		print ('''Usage: moncli command [--bind address] [--port number] [--repo directory] [--threads number] [--cache filename] [--pid filename] [--log filename] [--authentication type]
+		print ('''Usage: moncli command [--broker address] [--repo directory] [--cache filename] [--pid filename] [--log filename]
 	
 	Valid commands: 
 	
@@ -679,19 +679,12 @@ class Help():
 			A second ctrl+c will kill Moncli.
 				
 	Parameters: 
-		--bind		The ipaddress of the message broker Moncli should listen to.
-		--port		The port on which the broker listens
+		--broker	The ipaddress of the message broker Moncli should listen to.
 		--local_repo	The location of the local plugin repository.
 		--remote_repo	The location of the remote plugin repository.
 		--cache		The location where the configuration cache is written and read from on startup.
 		--pid		The location of the pid file.
 		--log		The location of the log file.
-		--auth		The authentication required for submitting data into the webserver.
-					none : Disables authentication (default).
-					pam  : Use PAM for authentication.
-		--ssl		If defined enables SSL support
-		--ssl_cert	The filename of the ssl certificate.
-		--ssl_priv_key	The filename of the private key.
 		--lib		The library path to include to the search path.
 						
 Moncli is distributed under the Terms of the GNU General Public License Version 3. (http://www.gnu.org/licenses/gpl-3.0.html)
@@ -700,7 +693,7 @@ For more information please visit http://www.smetj.net/moncli/
 ''')
 		return()
 if __name__ == '__main__':
-#	try:
+	try:
 		#Parse command line options
 		parser = OptionParser()
 		parser.add_option("--broker", dest="broker", default="127.0.0.1", type="string", help="IPaddress or hostname of the broker to connect to.  Default is localhost.")
@@ -752,15 +745,15 @@ if __name__ == '__main__':
 			Help().usage()
 			print ('Unknown option %s \n' %(cli_actions[0]))
 			sys.exit()
-#	except Exception as err:
-#		sys.stderr.write('A fatal error has occurred.\n')
-#		sys.stderr.write('Please file a bug report to https://github.com/smetj/Moncli/issues including:\n')
-#		sys.stderr.write('\t - Moncli version.\n')
-#		sys.stderr.write('\t - Startup parameters.\n')
-#		sys.stderr.write('\t - A copy of your moncli.cache file.\n')
-#		sys.stderr.write('\t - Your OS and version.\n')
-#		sys.stderr.write('\t - Your Python version.\n')
-#		sys.stderr.write('\t - The steps to take to reproduce this error.\n')
-#		sys.stderr.write('\t - This piece of information: '+ str(type(err))+" "+str(err) + "\n" )
-#		sys.stderr.write(str(traceback.print_exc()))
-#		sys.exit(1)
+	except Exception as err:
+		sys.stderr.write('A fatal error has occurred.\n')
+		sys.stderr.write('Please file a bug report to https://github.com/smetj/Moncli/issues including:\n')
+		sys.stderr.write('\t - Moncli version.\n')
+		sys.stderr.write('\t - Startup parameters.\n')
+		sys.stderr.write('\t - A copy of your moncli.cache file.\n')
+		sys.stderr.write('\t - Your OS and version.\n')
+		sys.stderr.write('\t - Your Python version.\n')
+		sys.stderr.write('\t - The steps to take to reproduce this error.\n')
+		sys.stderr.write('\t - This piece of information: '+ str(type(err))+" "+str(err) + "\n" )
+		sys.stderr.write(str(traceback.print_exc()))
+		sys.exit(1)
