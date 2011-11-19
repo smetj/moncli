@@ -29,7 +29,7 @@ from random import randint
 from apscheduler.scheduler import Scheduler
 from platform import system,machine
 from hashlib import md5
-__version__='0.1.7'
+__version__='0.1.8'
 
 class RequestProcessor(threading.Thread):
 	'''A worker processes receives and executes an incoming request, creates a report, reschedules it if required and submits it to output queue.'''
