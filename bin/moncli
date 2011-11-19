@@ -510,9 +510,10 @@ class Broker():
 		else:
 			self.rx_queue.put({'delivery_tag':method.delivery_tag,'data':data})
 class Handler(threading.Thread):
-	def __init__(self,rx_queue,submitReport,acknowledgeTag):
+	def __init__(self,rx_queue,submitReport,acknowledgeTag,block):
 		threading.Thread.__init__(self)
 		self.rx_queue=rx_queue
+		self.block=block
 		
 		#A function coming from the Broker class to submit the report into the message broker
 		#Accepts "data" as param
@@ -540,7 +541,7 @@ class Handler(threading.Thread):
 		self.start()
 	def run(self):
 		logger.info('Handler Started.')
-		while True:
+		while self.block()==True:
 			while self.rx_queue.qsize() > 0:
 				document = self.rx_queue.get()
 				if document.has_key('scheduled'):
@@ -641,30 +642,22 @@ class Server():
 					
 		handler = Handler(	rx_queue=rx_queue,
 					submitReport=broker.submitReport,
-					acknowledgeTag=broker.acknowledgeTag)
+					acknowledgeTag=broker.acknowledgeTag,
+					block=self.block)
 						
 		#Initialize Plugin execute object
 		pluginExecute = PluginExecute()
 		
 		#Define the consume action		
-		broker.connection.ioloop.start()
-		
 		try:
-			
-			while self.block()==True:
-				time.sleep(1)
+			broker.connection.ioloop.start()
 		except KeyboardInterrupt:
-			log_generator.queue.put(['Normal','Stopping all queues in a polite way. Press ctrl+c (or sigint) again to force stop.'])
-			try:
-				self.thread_block=False
-				cherrypy.engine.exit()
-				while len (threading._active) > 2:
-					time.sleep(0.1)
-				os.remove(self.pid)
-				sys.exit
-			except KeyboardInterrupt:
-				os.remove(self.pid)
-				sys.exit
+			self.thread_block=False
+			broker.connection.close()
+			broker.connection.ioloop.start()
+			handler.join()
+			os.remove(self.pid)
+			sys.exit
 class Help():
 	'''Produces command line help message.'''
 	def __init__(self):
