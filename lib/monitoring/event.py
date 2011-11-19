@@ -67,13 +67,11 @@ class Event():
 			self.report.target = self.request.target
 			self.report.cycle = self.request.cycle
 			self.report.plugin = self.request.plugin
-
 class Report():
 	'''Create a report event object to be injected into messaging infrastructure.
 	A report can but does not have to be triggered by a request.'''
-	def __init__(self,logging=None):
+	def __init__(self):
 		'''Initialize event object creation.'''
-		self.logging=logging
 		self.UUID=str(uuid4())
 		self.timezone=tzname[0]
 		self.time=time()
@@ -141,7 +139,7 @@ class Report():
 	def translate(self):
 		return self.translator.do(self.construct())
 class ReportRequest():
-	def __init__(self,logging=None):
+	def __init__(self):
 		self.variables = [ 'UUID','timezone','time','FQDN','type','reason','cycle','subject','destination','message','target',
 				'plugin','pluginHash','pluginTimeout','pluginParameters','evaluators','tags','format','weight_map' ]
 		for variable in self.variables:
@@ -152,9 +150,7 @@ class ReportRequest():
 		self.timezone=tzname[0]
 		self.time=time()
 		self.FQDN=node()
-		self.type='reportRequest'
-		
-		self.logging=logging
+		self.type='reportRequest'		
 	def addEvaluator(self,name,evaluator,thresholds):
 		self.evaluators[name]={ 'evaluator':evaluator,'thresholds':thresholds}
 	def __object(self):
@@ -241,7 +237,7 @@ class ReportRequest():
 		except Exception as error:
 			raise Exception(error)
 class SystemRequest():
-	def __init__(self,logging=None):
+	def __init__(self):
 		self.variables = [ 'UUID','timezone','time','FQDN','type','reason','cycle','subject','destination','target',
 				'command','tags','message' ]
 		for variable in self.variables:
@@ -253,7 +249,6 @@ class SystemRequest():
 		self.FQDN=node()
 		self.message='Executing the system command %s did not return any feedback.'%(self.command)
 		self.type='systemRequest'
-		self.logging=logging
 	def addCommand(self,command):
 		#{'shutdown':'now'}
 		#{'shutdown':'graceful'}

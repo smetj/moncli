@@ -8,118 +8,114 @@ import time
 import re
 import os
 import pickle
-import cherrypy
 import json
 import sys
 import daemon
 import traceback
 import signal
+import pika
 #import yappi
 #from guppy import hpy
-
+import logging
+from logging.handlers import RotatingFileHandler
+from pika.adapters import SelectConnection
 from subprocess import Popen,PIPE
 from multiprocessing import Manager
 from optparse import OptionParser
 from time import strftime, gmtime
 from socket import gethostname
+from socket import getfqdn
 from random import randint
 from apscheduler.scheduler import Scheduler
 from platform import system,machine
 from hashlib import md5
-__version__='0.1.6'
+__version__='0.1.7'
 
-class Worker(threading.Thread):
+class RequestProcessor(threading.Thread):
 	'''A worker processes receives and executes an incoming request, creates a report, reschedules it if required and submits it to output queue.'''
-	def __init__(self,document,command,outgoing_callback,system_commands,execute,logging,timeout=30):
+	def __init__(self,request,pluginManager,pluginExecute,logger,submitReport,acknowledgeTag=None,delivery_tag=None):
 		threading.Thread.__init__(self)
-		self.command=command
-		self.document=document
-		self.outgoing_callback=outgoing_callback
-		self.timeout=timeout
-		self.logging=logging
-		self.system_commands=system_commands
+		self.request=request
+		self.pluginManager=pluginManager
+		self.pluginExecute=pluginExecute
+		self.submitReport=submitReport
+		self.acknowledgeTag=acknowledgeTag
+		self.moncli_commands=MoncliCommands
+		self.delivery_tag=delivery_tag
 		
-		self.execute=execute
+		self.logger=logger
+	
 		self.calculator = Calculator()
-			
 		self.daemon=True
-		self.start()
+		self.start()		
 	def run(self):
-		from monitoring.event import Report
-		from monitoring.event import ReportRequest
-		from monitoring.event import SystemRequest
-		from monitoring.event import Event
-		event = Event()
-		report = Report()
+		self.event = event.Event()
+		document = self.request
 		try:
-			event.loadRequest(self.document)
+			self.event.loadRequest(document)
 		except Exception as error:
-			self.logging.put(['Error','Junk package received. Reason: %s.'%(error)])
+			self.logger.warn('Junk package received. Reason: %s.'%(error))
 		else:
-			if event.request.type == 'reportRequest':
+			if self.event.request.type == 'reportRequest':
 				try:
-					self.logging.put(['Normal','Worker received a request type report named %s.%s'%(event.request.subject,event.request.target)])
+					self.logger.info('Worker received a request type report named %s.%s'%(self.event.request.subject,self.event.request.target))
 					#Get plugin
-					command = self.command(command=self.document['plugin'],hash=self.document['pluginHash'])
+					command = self.pluginManager.getExecutable(command=document['plugin'],hash=document['pluginHash'])
 					#Execute plugin
-					(event.report.raw,event.report.verbose,event.report.metrics) = self.execute.plugin(	command=command,
-																parameters=event.request.pluginParameters,
-																hash=event.request.pluginHash,
-																timeout=event.request.pluginTimeout)
+					(self.event.report.raw,self.event.report.verbose,self.event.report.metrics) = self.pluginExecute.do(	command=command,
+																parameters=self.event.request.pluginParameters,
+																hash=self.event.request.pluginHash,
+																timeout=self.event.request.pluginTimeout)
 					#Calculate each evalutor and global status
-					global_status = StatusCalculator(weight_map=event.request.weight_map)
-					for evaluator in event.request.evaluators:
-						(value,status)	= self.calculator.do(	output=event.report.raw,
-											dictionary=event.report.metrics,
-											evaluator=event.request.evaluators[evaluator]['evaluator'],
-											thresholds=event.request.evaluators[evaluator]['thresholds'])
+					global_status = StatusCalculator(weight_map=self.event.request.weight_map)
+					for evaluator in self.event.request.evaluators:
+						(value,status)	= self.calculator.do(	output=self.event.report.raw,
+											dictionary=self.event.report.metrics,
+											evaluator=self.event.request.evaluators[evaluator]['evaluator'],
+											thresholds=self.event.request.evaluators[evaluator]['thresholds'])
 							
-						event.report.addEvaluator(	name=evaluator,
+						self.event.report.addEvaluator(	name=evaluator,
 										status=status,
 										value=value,
-										metric=event.request.evaluators[evaluator].get('metric',None),
-										evaluator=event.request.evaluators[evaluator]['evaluator'],
-										thresholds=event.request.evaluators[evaluator]['thresholds'])
+										metric=self.event.request.evaluators[evaluator].get('metric',None),
+										evaluator=self.event.request.evaluators[evaluator]['evaluator'],
+										thresholds=self.event.request.evaluators[evaluator]['thresholds'])
 								
 						global_status.states.append(status)								
 			
-						event.report.status=global_status.result()
+						self.event.report.status=global_status.result()
 							
 						#Replace placeholders in message with values.
 						message=BuildMessage()
-						event.report.message=message.generate(evaluators=event.report.evaluators,message=event.request.message)
+						self.event.report.message=message.generate(evaluators=self.event.report.evaluators,message=self.event.request.message)
 						
 						#Finalize the report
-						event.finalizeReport()
-														
+						self.event.finalizeReport()															
 				except Exception as err:
-					self.logging.put(['Error','An error occured processing "%s" Reason: %s'%(event.request.subject,err)])
-					event.report.status = None
-					event.report.message=str(type(err))+" "+str(err)
-					event.finalizeReport()
+					self.logger.critical('An error occured processing "%s" Reason: %s'%(self.event.request.subject,err))
+					self.event.report.status = None
+					self.event.report.message=str(type(err))+" "+str(err)
+					self.event.finalizeReport()	
+				self.submitReport (self.event.report.translate())
+				if self.delivery_tag != None:
+					self.acknowledgeTag (tag=self.delivery_tag)
+			elif self.event.request.type == 'systemRequest':
 				try:
-					self.outgoing_callback({'destination':event.report.destination,'requestUUID':event.report.requestUUID,'data':event.report.translate()})
+					self.moncli_commands.execute(command=self.event.request.command)
+					self.logger.info('Worker received a request type system.')
 				except Exception as err:
-					self.logging.put(['Error','An error occured processing a report Reason: %s'%(err)])
-			elif event.request.type == 'systemRequest':
-				try:
-					self.system_commands.execute(command=event.request.command)
-					self.logging.put(['Normal','Worker received a request type system.'])
-					
-				except Exception as err:
-					self.logging.put(['Error','An error occured processing "%s" Reason: %s'%(event.request.subject,err)])
-					event.report.status = None
-					event.report.message=str(type(err))+" "+str(err)
+					self.logger.critical('An error occured processing "%s" Reason: %s'%(self.event.request.subject,err))
+					self.event.report.status = None
+					self.event.report.message=str(type(err))+" "+str(err)
 				
-				event.finalizeReport()
-				try:
-					self.outgoing_callback({'destination':event.report.destination,'requestUUID':event.report.requestUUID,'data':event.report.translate()})
-				except Exception as err:
-					self.logging.put(['Error','An error occured processing a report Reason: %s'%(err)])
+				self.event.finalizeReport()
+				self.submitReport (self.event.report.translate())
+				if self.delivery_tag != None:
+					self.acknowledgeTag (tag=self.delivery_tag)
 			else:
-				self.logging.put(['Error','Junk package received but not noticed by verification routine. Please report to developer.'%(self.name)])
+				self.logger.critical('Junk package received but not noticed by verification routine. Please report to developer.'%(self.name))
 class BuildMessage():
-	'''Builds human readable summary messages by replacing variables in request.message with their .'''
+	'''Builds human readable summary messages by replacing variables in request.message with their value.'''
 	def __init__(self):
 		pass
 	def generate(self,evaluators,message):
@@ -167,15 +163,15 @@ class StatusCalculator():
 			if template[element]['name'] == name:
 				return True
 		return False
-class Executer():
-	def __init__(self,caching=False,logging=None):
+class PluginExecute():
+	'''Verifies and executes a plugin and keeps track of its cache'''
+	def __init__(self,caching=False):
 		self.output=None
 		self.verbose=None
 		self.dictionary=None
 		self.caching=caching
-		self.logging=logging
 		self.cache=Manager().dict()
-	def plugin(self,command=None,parameters=None,hash=None,timeout=30):
+	def do(self,command=None,parameters=None,hash=None,timeout=30):
 		normal_output=[]
 		error_output=[]
 		errors=None
@@ -238,7 +234,7 @@ class Calculator():
 		self.whitelist=[ '+','-','/','*','^','(',')','.',' ' ]
 	def do(self,output,dictionary,evaluator,thresholds):
 		if evaluator[:3] == 're:':
-			value = self.__executeRegex(output=output,regex=evaluator[3:])
+			value = self.__ShellExecuteegex(output=output,regex=evaluator[3:])
 		elif evaluator[:3] == 'fm:':
 			value = self.__executeFormula(dictionary=dictionary,formula=evaluator[3:])
 		else:
@@ -258,7 +254,7 @@ class Calculator():
 		except:
 			result= None
 		return result
-	def __executeRegex(self,output,regex):
+	def __ShellExecuteegex(self,output,regex):
 		matches=0
 		try:
 			for line in output:
@@ -305,7 +301,7 @@ class Calculator():
 			else:
 				raise RuntimeError('Invalid Threshold :'+str(threshold))
 		return "OK"
-class SystemCommands():
+class MoncliCommands():
 	def __init__(self,scheduler_methods,logging=None):
 		self.scheduler_methods=scheduler_methods
 		self.logging=logging
@@ -338,69 +334,16 @@ class SystemCommands():
 		if data == 'reset':
 			self.logging.put(['Normal','Performing scheduler reset.'])
 			self.scheduler_methods.reset()
-class PoolMaster(threading.Thread):
-	'''
-	It monitors the input queue for jobs to process.  These jobs are divided across the worker pool.
-	It does some primitive load balancing to spread the load across the worker pool.
-	'''
-	def __init__(self,incoming_queue,outgoing_callback,system_commands,repository_manager,scheduler,logging,blockcallback=False):
-		threading.Thread.__init__(self)
-		self.incoming_queue=incoming_queue
-		self.outgoing_callback=outgoing_callback
-		self.qcounter=0
-		self.repository_manager=repository_manager
-		self.system_commands=system_commands
-		
-		self.scheduler=scheduler
-		
-		#The execute class is intiated here as it contains a cache dictionary to be shared over all threads
-		self.execute=Executer(caching=True,logging=logging)
-		
-		self.logging=logging
-		self.threads=[]
-		self.block=blockcallback		
-	
-		self.threads=[]
-	
-		self.daemon=True
-		self.start()
-	def run(self):
-		while self.block() == True:
-			while not self.incoming_queue.empty():
-				document = self.incoming_queue.get()
-				
-				#The poolmaster decides whether something is submitted to the JobScheduler or not
-				if document.has_key('scheduled'):
-					document=document['document']
-				else:
-					self.scheduler.schedule(document)
-						
-				self.threads.append(	Worker(	document=document,
-								command=self.repository_manager.getExecutable,
-								outgoing_callback=self.outgoing_callback,
-								system_commands=self.system_commands,
-								execute=self.execute,
-								logging=self.logging))
-			time.sleep(0.1)
-			
-			#"Garbage collection" Deleting threads which are not alive anymore.
-			for index,value in enumerate(self.threads):
-				if not self.threads[index].isAlive():
-					del self.threads[index]
-					
-		self.scheduler.shutdown()
-		#Waiting for all running jobs to end or timeout.
-		for job in self.threads:
-			job.join()
-class RepositoryManager():
-	def __init__(self,local_repository,remote_repository,logging):
+class PluginManager():
+	'''Provides the name of the plugin to execute, verifies its hash and downloads a new plugin version if required.'''
+	def __init__(self,local_repository,remote_repository):
 		self.local_repository=local_repository
 		self.remote_repository=remote_repository
-		self.logging=logging
 		if self.local_repository[-1] != '/':
 			self.local_repository += '/'
 		if self.remote_repository != None and self.remote_repository[-1] != '/':
 			self.remote_repository += '/'
+		logger.debug('PluginManager Initiated')
 	def getExecutable(self,command,hash=None):
 		if not os.path.exists(self.local_repository+command):
 			self.__createCommand(dir=self.local_repository+command)			
@@ -415,16 +358,19 @@ class RepositoryManager():
 		plugin.close()
 		if file != plugin_hash.hexdigest():
 			raise Exception ( 'Plugin filename does not match its hash value.' )
+			logger.warning ( 'Plugin filename %s does not match its hash value %s.'%(file,plugin_hash.hexdigest() ) )
 		return True	
 	def __createCommand(self,dir):
 		os.mkdir(dir)
 	def __downloadVersion(self,remote_repository,local_repository,command,hash):
 		full_url = "%s%s(%s)/%s/%s"%(remote_repository,system(),machine(),command,hash)
-		self.logging.put(['Normal','Downloading update %s.'%(full_url)])
+		logger.info ('Downloading update %s.'%(full_url))
 		try:
 			response = urlopen(full_url)
 		except Exception as err:
+			logger.critical ( 'Error downloading update. Reason: %s'%(str(err) + " - "+full_url) )
 			raise Exception (str(err) + " - "+full_url )
+			
 		output = open ( local_repository+'/'+command+'/'+hash, 'w' )
 		output.write(response.read())
 		response.close()
@@ -432,115 +378,194 @@ class RepositoryManager():
 		#Make executable
 		os.chmod(local_repository+'/'+command+'/'+hash,0750)
 class JobScheduler():
-	def __init__(self,cache_file,incoming_queue,logging,random_wait=False):
+	def __init__(self,cache_file,rx_queue,random_wait=False):
 		self.cache_file=cache_file
-		self.incoming_queue=incoming_queue
+		self.rx_queue=rx_queue
+		self.logger=logger
 		self.random_wait=random_wait
-		self.logging=logging
 		self.jobs={}
+		self.raw_jobs={}
+		self.load()
 		self.sched = Scheduler()
 		self.sched.start()
-		self.load()
-		self.sched.add_interval_job(self.save,seconds=60)
-		self.logging.put(['Normal','Job scheduler: initialized.'])
-	def schedule(self,data):
-		name = data['target']+data['subject']
-		if int(data['cycle']) > 0:
+		self.sched.add_interval_job(self.save,seconds=60,name='Cache saving.')
+	def do(self,data):
+		'''Incoming documents are incapsulated into a dictionary.
+		{ 'scheduled':True,'data':data }'''
+		data={ 'scheduled':True, 'data':data }
+		name = data['data']['target']+data['data']['subject']
+		if int(data['data']['cycle']) > 0:
+			self.raw_jobs[name]=data
 			if self.jobs.has_key(name):
 				self.sched.unschedule_job(self.jobs[name])
 				del(self.jobs[name])
-			self.jobs[name]=self.sched.add_interval_job(	self.incoming_queue.put,
-									seconds=int(data['cycle']),
-									args=[{'scheduled':True,'document':data}])
+			self.jobs[name]=self.sched.add_interval_job(	self.submit,
+									seconds=int(data['data']['cycle']),
+									name = name,
+									kwargs={'data':data}
+									)
 		else:
+			del(self.raw_jobs[name])
 			if self.jobs.has_key(name):
 				self.sched.unschedule_job(self.jobs[name])
 				del(self.jobs[name])
+	def submit(self,data):
+		self.rx_queue.put(data)
 	def shutdown(self):
 		self.save()		
 		self.sched.shutdown()
 	def save(self):
 		try:
-			jobs=[]
-			for element in self.jobs:
-				jobs.append(self.jobs[element].args[0]['document'])
 			output=open(self.cache_file,'wb')
-			pickle.dump(jobs,output)
+			pickle.dump(self.raw_jobs,output)
 			output.close()
-			self.logging.put(['Normal','Job scheduler: Moncli cache file saved.'])				
+			logger.info('Job scheduler: Moncli cache file saved.')
 		except Exception as err:
-			self.logging.put(['Error','Job scheduler: Moncli cache file could not be saved. Reason: %s.'%(err)])				
+			logger.warn('Job scheduler: Moncli cache file could not be saved. Reason: %s.'%(err))
 	def load(self):
 		try:
 			input=open(self.cache_file,'r')
-			jobs=pickle.load(input)
+			self.raw_jobs=pickle.load(input)
 			input.close()
-			for element in jobs:
-				self.incoming_queue.put(element)
+			for element in self.raw_jobs:
+				self.rx_queue.put(self.raw_jobs[element])
+				self.do(data=self.raw_jobs[element])
+			logger.info('Job scheduler: Loaded cache file.')
 		except Exception as err:
-			self.logging.put(['Normal','Job scheduler: I could not open cache file: Reason: %s.'%(err)])
+			logger.info('Job scheduler: I could not open cache file: Reason: %s.'%(err))
 	def reset(self):
 		for job in self.jobs:
 			self.sched.unschedule_job(self.jobs[job])
 			del(self.jobs[job])
-class WebContent():
-	'''Class which provides form to accept incoming NSCAweb data.'''
-	def __init__(self,authenticate,incoming_queue,logging):
-		from monitoring.event import Event
-		self.auth=authenticate
-		self.incoming_queue=incoming_queue
-		self.logging=logging
-		self.check=Event()
-	def index(self,*args,**form):
-		if form.has_key('username') and form.has_key('password') and form.has_key('input'):
-			if self.auth.do(username=form['username'],password=form['password']) == True:
-				try:
-					data=json.loads(form['input'])
-					self.check.loadRequest(data=data)
-				except Exception as error:
-					self.logging.put(['Error','Incoming data not correct from user %s at ip %s. Reason: %s'%(form['username'],str(cherrypy.request.remote.ip),error)])
-				else:
-					self.incoming_queue.put(data)
-					self.logging.put(['Normal','Data received from user %s at ip %s'%(form['username'],str(cherrypy.request.remote.ip))])
-			else:
-				self.logging.put(['Error','Authentication failed for user %s at ip %s'%(form['username'],str(cherrypy.request.remote.ip))])
-				raise cherrypy.HTTPError(403,"Access denied.")
+class Logger():
+	'''Creates a logger class.'''
+	def __init__(self,loglevel=logging.DEBUG):
+		self.format=logging.Formatter('%(asctime)s %(levelname)s::%(processName)s:%(message)s')
+		self.loglevel=loglevel
+	def get(self,name=None, scrlog=True, txtlog=True):
+		log = logging.getLogger()
+		log.setLevel(self.loglevel)
+		if txtlog == True:
+			txt_handler = logging.FileHandler( cli_options.log )
+			txt_handler.setFormatter(self.format)
+			log.addHandler(txt_handler)
+		if scrlog == True:
+			scr_handler = logging.StreamHandler()
+			scr_handler.setFormatter(self.format)
+			log.addHandler(scr_handler)
+		return log
+class Broker():
+	'''Handles communication to message broker and initialises queus, exchanges and bindings if missing.'''
+	def __init__(self,host,rx_queue):
+		self.queue_name = getfqdn()
+		self.subnet_bind_key = '172.16.43.0/24'
+		parameters = pika.ConnectionParameters(host)
+		self.rx_queue=rx_queue
+		self.request = event.ReportRequest()
+		self.connection = SelectConnection(parameters,self.__on_connected)
+		logger.info('Broker started')
+	def __on_connected(self,connection):
+		logger.debug('Connecting to broker.')
+		connection.channel(self.__on_channel_open)
+	def __on_channel_open(self,new_channel):
+		self.channel = new_channel
+		self.__initialize()
+		self.channel.basic_consume(self.submit2queue, queue = self.queue_name)
+	def __initialize(self):
+		logger.debug('Creating exchanges, queues and bindings on broker.')
+		self.channel.exchange_declare(exchange='moncli_report_requests_broadcast',type='fanout',durable=True)
+		self.channel.exchange_declare(exchange='moncli_report_requests_subnet',type='direct',durable=True)
+		self.channel.exchange_declare(exchange='moncli_report_requests',type='direct',durable=True)
+		self.channel.exchange_declare(exchange='moncli_reports',type='fanout',durable=True)
+		self.channel.queue_declare(queue=self.queue_name,durable=True)
+		self.channel.queue_declare(queue='moncli_reports',durable=True)
+		self.channel.queue_bind(queue=self.queue_name, exchange='moncli_report_requests_broadcast')
+		self.channel.queue_bind(queue='moncli_reports', exchange='moncli_reports')
+		self.channel.queue_bind(queue=self.queue_name, exchange='moncli_report_requests_subnet', routing_key=self.subnet_bind_key)
+		self.channel.queue_bind(queue=self.queue_name, exchange='moncli_report_requests', routing_key=self.queue_name)
+	def submitReportRequest(self,data):
+		logger.debug('Submitting a ReportRequest to moncli_report_requests')
+		self.channel.basic_publish(	exchange='moncli_report_requests', 
+						routing_key=self.queue_name, 
+						body=json.dumps(data), 
+						properties=pika.BasicProperties(delivery_mode=2)
+						)
+	def submitReport(self,data):
+		logger.debug('Submitting a Report to moncli_reports')
+		self.channel.basic_publish(	exchange='moncli_reports', 
+						routing_key='', 
+						body=json.dumps(data), 
+						properties=pika.BasicProperties(delivery_mode=2)
+						)
+	def acknowledgeTag(self,tag):
+		logger.debug('Acknowledging Tag.')
+		self.channel.basic_ack(delivery_tag=tag)	
+	def submit2queue(self,ch, method, properties, body):
+		try:
+			data = json.loads(body)
+			self.request.integrity(request=data)
+		except Exception as err:
+			logger.warn('Garbage reveived from broker, purging. Reason: %s'%(err))
+			self.acknowledgeTag(tag=method.delivery_tag)
 		else:
-			self.logging.put(['Normal','Incomplete data received for user %s at ip %s'%(form['username'],str(cherrypy.request.remote.ip))])
-	index.exposed = True
-	def default(self, *args, **kwargs):
-		pass
-	default.exposed = True
-class WebServer(threading.Thread):
-	def __init__(self,address,port,web_content,ssl_cert,ssl_priv_key,logging,blockcallback):
+			self.rx_queue.put({'delivery_tag':method.delivery_tag,'data':data})
+class Handler(threading.Thread):
+	def __init__(self,rx_queue,submitReport,acknowledgeTag):
 		threading.Thread.__init__(self)
-		self.address=address
-		self.port=port
-		self.web_content=web_content
-		self.ssl_cert=ssl_cert
-		self.ssl_priv_key=ssl_priv_key
-		self.logging=logging
-		self.block=blockcallback
+		self.rx_queue=rx_queue
+		
+		#A function coming from the Broker class to submit the report into the message broker
+		#Accepts "data" as param
+		self.submitReport=submitReport
+		
+		#A function coming from the Broker class to confirm that the message can be removed (acknowledged) from the broker.
+		#Accepts "tag" as param
+		self.acknowledgeTag=acknowledgeTag
+		
+		#The jobscheduler resubmits a request into the rx_queue
+		self.jobScheduler=JobScheduler(	cache_file	= cli_options.cache,
+						rx_queue	= self.rx_queue
+						)
+		
+		#The pluginmanager selects and verifies the right plugin to execute and downloads an update if required.
+		self.pluginManager=PluginManager(	local_repository	= cli_options.local_repository,
+							remote_repository	= cli_options.remote_repository,
+							)
+							
+		#The pluginexecute executes a plugin and caches its results so these values
+		#can be added during the next execution cycle.
+		self.pluginExecute=PluginExecute(	caching=True,
+							)
 		self.daemon=True
 		self.start()
 	def run(self):
-		self.logging.put(['Normal','Webserver thread started.'])
-		self.config={'global': {'server.socket_host': self.address}}
-		cherrypy.config.update({'global': {	'server.socket_port': int(self.port),
-							'server.socket_host': self.address,
-							'tools.sessions.on': False,
-							'log.screen': False}}
-							)
-		cherrypy.config.update({'engine.autoreload_on':False})		
-		#check if we need to run over https or not
-		if self.ssl_cert != None and self.ssl_priv_key != True:
-			cherrypy.config.update({'server.ssl_cert': self.ssl_cert,'server.ssl_priv_key': self.ssl_priv_key })
-			
-		cherrypy.tree.mount(self.web_content,'/',config=self.config)
-		cherrypy.engine.start()
-		while self.block() == True:
+		logger.info('Handler Started.')
+		while True:
+			while self.rx_queue.qsize() > 0:
+				document = self.rx_queue.get()
+				if document.has_key('scheduled'):
+					#This request is injected from the scheduler.
+					request_processor = RequestProcessor (	request		= document['data'],
+										pluginManager	= self.pluginManager,
+										pluginExecute 	= self.pluginExecute,
+										submitReport  	= self.submitReport,
+										logger		= logger
+										)
+				else:
+					#Means it's a fresh one coming from the broker
+					request_processor = RequestProcessor (	request		= document['data'],
+										pluginManager	= self.pluginManager,
+										pluginExecute 	= self.pluginExecute,
+										submitReport  	= self.submitReport,
+										acknowledgeTag	= self.acknowledgeTag,
+										delivery_tag	= document['delivery_tag'],
+										logger		= logger
+										)
+					#Run this request through the jobScheduler
+					self.jobScheduler.do(data=document['data'])
 			time.sleep(0.1)
 class Profile():
+	'''Used for profiling purposes'''
 	def __init__(self):
 		yappi.start()
 		self.yappi_results = open ( '/opt/moncli/var/profile.yappi','w' )
@@ -552,18 +577,13 @@ class Profile():
 			print line
 class Server():
 	'''Starts the whole program and blocks from exiting'''
-	def __init__(self,pid=None,threads=None,address=None,port=None,logfile=None,local_repository=None,remote_repository=None,cache=None,auth='none',ssl_cert=None,ssl_priv_key=None,lib=None):
+	def __init__(self,pid=None,address=None,logfile=None,local_repository=None,remote_repository=None,cache=None,lib=None):
 		self.pid=pid
-		self.threads=threads
 		self.address=address
-		self.port=port
-		self.auth=auth
 		self.logfile=logfile
 		self.local_repository=local_repository
 		self.remote_repository=remote_repository
 		self.cache=cache
-		self.ssl_cert=ssl_cert
-		self.ssl_priv_key=ssl_priv_key
 		self.lib = lib
 		self.thread_block=True
 	def check_running(self):
@@ -607,64 +627,28 @@ class Server():
 		pidfile.write(str(os.getpid()))
 		pidfile.close()
 				
-		#Create in & output queues
-		incoming_queue=Queue.Queue(0)
-		outgoing_queue=Queue.Queue(0)
+		#Start logging object
+		global logger
+		logger = Logger().get()
+
+		#Create incoming requests queue
+		rx_queue=Queue.Queue()
+
+		#Initialze Broker
+		broker = Broker(	host		= self.address,
+					rx_queue	= rx_queue,
+					)
+					
+		handler = Handler(	rx_queue=rx_queue,
+					submitReport=broker.submitReport,
+					acknowledgeTag=broker.acknowledgeTag)
+						
+		#Initialize Plugin execute object
+		pluginExecute = PluginExecute()
 		
-		#Start a LogGenerator thread
-		from monitoring.server import LogGenerator
-		log_generator = LogGenerator(	destination=self.logfile,
-						blockcallback=self.block)
-
-		#Start the scheduler
-		job_scheduler = JobScheduler(	cache_file=self.cache,
-						incoming_queue=incoming_queue,
-						random_wait=True,
-						logging=log_generator.queue)
-
-		#Initialize a SystemCommands object
-		system_commands=SystemCommands(	logging=log_generator.queue,
-						scheduler_methods=job_scheduler)
-
-		#Create a repository manager object
-		repository_manager = RepositoryManager( local_repository = self.local_repository,
-							remote_repository = self.remote_repository,
-							logging=log_generator.queue)
+		#Define the consume action		
+		broker.connection.ioloop.start()
 		
-		#Initialize the pool thread
-		from monitoring.communication import SubmitListener
-		submit_listener = SubmitListener(	logging=log_generator.queue,
-							blockcallback=self.block)
-		
-		pool = PoolMaster(	incoming_queue=incoming_queue,
-					outgoing_callback=submit_listener.dump,
-					scheduler=job_scheduler,
-					system_commands=system_commands,
-					repository_manager=repository_manager,
-					logging=log_generator.queue,
-					blockcallback=self.block)
-
-		#Initiate an authentication method
-		from monitoring.authentication import Authenticate
-		authenticate = Authenticate(	auth_type=self.auth,
-						logging=log_generator.queue)
-		
-		#Initiate an htmlContent object
-		web_content = WebContent(	authenticate=authenticate,
-						incoming_queue=incoming_queue,
-						logging=log_generator.queue)
-	
-		#Initiate the webserver thread
-		from monitoring import pam
-		web_server = WebServer(	address=self.address,
-					port=self.port,
-					web_content= web_content,
-					ssl_cert=self.ssl_cert,
-					ssl_priv_key=self.ssl_priv_key,
-					logging=log_generator.queue,
-					blockcallback=self.block)
-
-		#Block here
 		try:
 			
 			while self.block()==True:
@@ -682,6 +666,7 @@ class Server():
 				os.remove(self.pid)
 				sys.exit
 class Help():
+	'''Produces command line help message.'''
 	def __init__(self):
 		pass
 	def usage(self):
@@ -701,11 +686,10 @@ class Help():
 			A second ctrl+c will kill Moncli.
 				
 	Parameters: 
-		--bind		The ipaddress to which Moncli should listen.  Binds by default to all addresses.
-		--port		The port on which Moncli should listen for incoming data.  By default this is 6555.
+		--bind		The ipaddress of the message broker Moncli should listen to.
+		--port		The port on which the broker listens
 		--local_repo	The location of the local plugin repository.
 		--remote_repo	The location of the remote plugin repository.
-		--threads	The amount of threads which should be started.  By default this is 5.
 		--cache		The location where the configuration cache is written and read from on startup.
 		--pid		The location of the pid file.
 		--log		The location of the log file.
@@ -723,74 +707,67 @@ For more information please visit http://www.smetj.net/moncli/
 ''')
 		return()
 if __name__ == '__main__':
-	try:
+#	try:
 		#Parse command line options
 		parser = OptionParser()
-		parser.add_option("--bind", dest="bind", default="0.0.0.0", type="string", help="IPaddress on which server should bind.  Default is all interfaces.")
-		parser.add_option("--port", dest="port", default="6555", type="string", help="Port on which data is accepted.  Default is 6555")
+		parser.add_option("--broker", dest="broker", default="127.0.0.1", type="string", help="IPaddress or hostname of the broker to connect to.  Default is localhost.")
 		parser.add_option("--local_repo", dest="local_repository", default=os.getcwd()+'/', type="string", help="Location of the local plugin repository.")
 		parser.add_option("--remote_repo", dest="remote_repository", default=None, type="string", help="Location of the remote plugin repository.")
-		parser.add_option("--threads", dest="threads", default="5", type="int", help="Number of threads to start.")
 		parser.add_option("--cache", dest="cache", default=os.getcwd()+'/moncli.cache', type="string", help="Scheduler configuration cache.")
 		parser.add_option("--pid", dest="pid",default=os.getcwd()+"/moncli.pid", type="string", help="The location of the pid file.")
 		parser.add_option("--log", dest="log",default=os.getcwd()+"/moncli.log", type="string", help="The location of the log file.")
-		parser.add_option("--auth", dest="auth",default="none", type="string", help="The required authentication type.")
-		parser.add_option("--ssl_cert", dest="ssl_cert",default=None, help="Defines the location of the SSL certificate if required.")
-		parser.add_option("--ssl_priv_key", dest="ssl_priv_key",default=None, help="Defines the location of the SLL private key.")
-		parser.add_option("--lib", dest='lib',default='/opt/moncli/lib', type='string', help="The library path to include to the search.")
-		(commandline_options,commandline_actions)=parser.parse_args()
+		parser.add_option("--lib", dest='lib',default='/opt/moncli/lib/moncli', type='string', help="The library path to include to the search.")
+		global cli_options
+		cli_options, cli_actions=parser.parse_args()
 		
 		##Extend path environment
-		sys.path.append(commandline_options.lib)
-		from monitoring import communication
-		server = Server	(pid=commandline_options.pid,
-				threads=commandline_options.threads,
-				address=commandline_options.bind,
-				port=commandline_options.port,
-				logfile=commandline_options.log,
-				local_repository=commandline_options.local_repository+'/',
-				remote_repository=commandline_options.remote_repository,
-				cache=commandline_options.cache,
-				auth=commandline_options.auth,
-				ssl_cert=commandline_options.ssl_cert,
-				ssl_priv_key=commandline_options.ssl_priv_key,
-				lib=commandline_options.lib
+		sys.path.append(cli_options.lib)
+		import event
+		__import__('event')
+		
+		server = Server	(pid=cli_options.pid,
+				address=cli_options.broker,
+				logfile=cli_options.log,
+				local_repository=cli_options.local_repository+'/',
+				remote_repository=cli_options.remote_repository,
+				cache=cli_options.cache,
+				lib=cli_options.lib
 				)
 		
 		#Execute command
-		if len(commandline_actions) != 1:
+		if len(cli_actions) != 1:
 			Help().usage()
 			sys.exit
-		elif commandline_actions[0] == 'start':
+		elif cli_actions[0] == 'start':
 			server.check_running()
 			print ("Starting Moncli in background.")
 			with daemon.DaemonContext():
 				server.start()
-		elif commandline_actions[0] == 'debug':	
+		elif cli_actions[0] == 'debug':	
 			print ("Starting Moncli in foreground.")
 			server.check_running()
 			server.start()
-		elif commandline_actions[0] == 'stop':
+		elif cli_actions[0] == 'stop':
 			print ("Stopping Moncli gracefully.  Tail log for progress.")
 			server.stop()
-		elif commandline_actions[0] == 'kill':
+		elif cli_actions[0] == 'kill':
 			print ("Killing Moncli forcefully.")
 			server.kill()
-		elif commandline_actions[0] == 'dump':
+		elif cli_actions[0] == 'dump':
 			pass
 		else:
 			Help().usage()
-			print ('Unknown option %s \n' %(commandline_actions[0]))
+			print ('Unknown option %s \n' %(cli_actions[0]))
 			sys.exit()
-	except Exception as err:
-		sys.stderr.write('A fatal error has occurred.\n')
-		sys.stderr.write('Please file a bug report to https://bugs.launchpad.net/moncli including:\n')
-		sys.stderr.write('\t - Moncli version.\n')
-		sys.stderr.write('\t - Startup parameters.\n')
-		sys.stderr.write('\t - A copy of your moncli.cache file.\n')
-		sys.stderr.write('\t - Your OS and version.\n')
-		sys.stderr.write('\t - Your Python version.\n')
-		sys.stderr.write('\t - The steps to take to reproduce this error.\n')
-		sys.stderr.write('\t - This piece of information: '+ str(type(err))+" "+str(err) + "\n" )
-		sys.stderr.write(str(traceback.print_exc()))
-		sys.exit(1)
+#	except Exception as err:
+#		sys.stderr.write('A fatal error has occurred.\n')
+#		sys.stderr.write('Please file a bug report to https://github.com/smetj/Moncli/issues including:\n')
+#		sys.stderr.write('\t - Moncli version.\n')
+#		sys.stderr.write('\t - Startup parameters.\n')
+#		sys.stderr.write('\t - A copy of your moncli.cache file.\n')
+#		sys.stderr.write('\t - Your OS and version.\n')
+#		sys.stderr.write('\t - Your Python version.\n')
+#		sys.stderr.write('\t - The steps to take to reproduce this error.\n')
+#		sys.stderr.write('\t - This piece of information: '+ str(type(err))+" "+str(err) + "\n" )
+#		sys.stderr.write(str(traceback.print_exc()))
+#		sys.exit(1)
