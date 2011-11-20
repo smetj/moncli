@@ -385,10 +385,10 @@ class JobScheduler():
 		self.random_wait=random_wait
 		self.jobs={}
 		self.raw_jobs={}
-		self.load()
 		self.sched = Scheduler()
 		self.sched.start()
 		self.sched.add_interval_job(self.save,seconds=60,name='Cache saving.')
+		self.load()
 	def do(self,data):
 		'''Incoming documents are incapsulated into a dictionary.
 		{ 'scheduled':True,'data':data }'''
@@ -427,9 +427,9 @@ class JobScheduler():
 			input=open(self.cache_file,'r')
 			self.raw_jobs=pickle.load(input)
 			input.close()
-			for element in self.raw_jobs:
+			for element in self.raw_jobs:				
 				self.rx_queue.put(self.raw_jobs[element])
-				self.do(data=self.raw_jobs[element])
+				self.do(data=self.raw_jobs[element]['data'])
 			logger.info('Job scheduler: Loaded cache file.')
 		except Exception as err:
 			logger.info('Job scheduler: I could not open cache file: Reason: %s.'%(err))
