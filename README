@@ -11,9 +11,9 @@ of choice in one of the supported formats.
 Moncli has following features:
 
 * Easy but powerful configuration:
-	Moncli reacts upon JSON configuration documents which are submitted into its built in webserver. All characteristics of how 
-	Moncli should handle a check, are in that JSON document you submit. This allows you to manage the configuration of your checks
-	from an external system.
+	Moncli reacts upon JSON configuration documents it recieves through the RabbitMQ message it connects to.
+	All characteristics of how Moncli should handle a check, are defined in that JSON document.  This allows you to 
+	manage the configuration and scheduling of checks from an external system.
 
 * Have more checks on your monitoring server:
 	Moncli has a built in scheduler. This scheduler receives a one time configuration of what to execute and evaluate. The 
