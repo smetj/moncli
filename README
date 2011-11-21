@@ -4,16 +4,16 @@
 |_|_|_|___|_|_|_____|_|_|
                          
 
-Monli is a generic MONitoring CLIent which executes and processes requests on an external system in order to interact with the host's 
+Moncli is a generic MONitoring CLIent which executes and processes requests on an external system in order to interact with the host's 
 local information sources which are normally not available over the network. Moncli then forwards these check results to the destination 
 of choice in one of the supported formats.
 
 Moncli has following features:
 
 * Easy but powerful configuration:
-	Moncli reacts upon JSON configuration documents it recieves through the RabbitMQ message it connects to.
-	All characteristics of how Moncli should handle a check, are defined in that JSON document.  This allows you to 
-	manage the configuration and scheduling of checks from an external system.
+	Moncli receives its configuration through a RabbitMQ message broker infrastructure.  All actions Moncli should execute are 
+	defined in JSON format and submitted through the broker.  This allows you to control all Moncli instances efficiently from a
+	centralized location.
 
 * Have more checks on your monitoring server:
 	Moncli has a built in scheduler. This scheduler receives a one time configuration of what to execute and evaluate. The 
