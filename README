@@ -10,10 +10,14 @@ of choice in one of the supported formats.
 
 Moncli has following features:
 
+* Powerful and flexible communication:
+	All communication going from and to MonCli goes over the RabbitMQ message broker.  This allows us to leverage all qualities
+	RabbitMQ has to offer into your monitoring setup.
+
 * Easy but powerful configuration:
-	Moncli receives its configuration through a RabbitMQ message broker infrastructure.  All actions Moncli should execute are 
-	defined in JSON format and submitted through the broker.  This allows you to control all Moncli instances efficiently from a
-	centralized location.
+	Moncli receives all assignments and commands through the message broker infrastructure.  All events MonCli should perform
+	are defined in JSON format.  This allows you to control all Moncli instances efficiently from a centralized location with just
+	submitting a JSON document.
 
 * Have more checks on your monitoring server:
 	Moncli has a built in scheduler. This scheduler receives a one time configuration of what to execute and evaluate. The 
@@ -39,13 +43,12 @@ Moncli has following features:
 	Moncli has a built-in update system which allows you to transparently update the plugins from a centralized repository.
 
 * Resilience:
-	Moncli submits check results into one or multiple monitoring servers. This is currently done over NRDP or NSCAweb. 
-	When Nagios or any of the forwarders becomes unavailable, then Moncli just queues the results and submits them when 
-	its possible.
+	When your monitoring infrastructure is not available or reachable all check results are queued in the broker environment,
+	waiting to be processed.  When a server is not online, all submitted commands will wait in the queue until MonCli picks
+	them up.
 
 * Security:
-	When desired, then Moncli can do all communication over https and you have PAM authentication at your disposal.
-	Only plugins with the correct hash will be executed which prevents the execution of changed or non conform plugins.
+	Only plugins with the correct hash can be executed which prevents the execution of changed or non conform plugins.
 
 * Compatibility:
 	Moncli works together with monitoring frameworks which are based upon or derived from Nagios Core. It allows you 
