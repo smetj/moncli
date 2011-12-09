@@ -665,7 +665,7 @@ class Help():
 		pass
 	def usage(self):
 		print ('Moncli %s Copyright 2011 by Jelle Smet <web@smetj.net>' %(__version__))
-		print ('''Usage: moncli command [--broker address] [--repo directory] [--cache filename] [--pid filename] [--log filename]
+		print ('''Usage: moncli command [--broker address] [--local_repo directory] [--remote_repo url] [--cache filename] [--pid filename] [--log filename]
 	
 	Valid commands: 
 	
