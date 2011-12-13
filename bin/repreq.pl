@@ -55,10 +55,18 @@ my $doc = &GetDoc(	$options{repository},
 			$options{host},
 			$options{service},
 			);
-
 my $document = &FillBlancs($doc);
-print $document,"\n";
+print &SubmitBroker($document);
 
+sub SubmitBroker(){
+	my $document=shift;
+	my $mq = Net::RabbitMQ->new();
+	$mq->connect($options{broker}, { user => $options{user}, password => $options{password} });
+	$mq->channel_open(1);
+	$mq->publish(1, $options{host},$document);
+	$mq->disconnect();
+	return "ok\n";
+}
 sub FillBlancs(){
 	my $doc=shift;
 	my $json = decode_json $doc;
@@ -67,7 +75,8 @@ sub FillBlancs(){
 	$json->{'FQDN'} = fqdn();
 	$json->{'UUID'} = $ug->to_string($uuid);
 	$json->{'time'} = time();
-	$json->{'timezone'} = "CET";	
+	$json->{'timezone'} = "CET";
+	$json->{'target'} = $options{host};
 	return encode_json $json;
 }
 sub GetDoc(){
@@ -77,16 +86,16 @@ sub GetDoc(){
 	my @json;
 	my $file;
 	
-	if ( [ -e "$repo/$host/$service" ] ){
+	if ( -e "$repo/$host/$service" ){
 		$file = sprintf ( "%s/%s/%s",$repo,$host,$service );
+
 	}
-	elsif ( [ -e "$repo/.default/$service" ] ){
+	elsif ( -e "$repo/.default/$service" ){
 		$file = sprintf ( "%s/.default/%s",$repo,$service );
 	}
 	else{
 		$file = "";
 	}
-	
 	if ( $file eq "" ){
 		print "No custom nor default report request found.\n";
 		exit 3;

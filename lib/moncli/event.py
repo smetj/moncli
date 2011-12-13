@@ -45,7 +45,6 @@ class Event():
 			setattr(self.request,item,data[item])	
 	def finalizeReport(self):
 		if self.request.type == 'reportRequest':
-			self.report.destination = self.request.destination
 			self.report.subject = self.request.subject
 			self.report.requestFQDN = self.request.FQDN
 			self.report.requestUUID = self.request.UUID
@@ -59,7 +58,6 @@ class Event():
 			self.report.pluginTimeout = self.request.pluginTimeout
 			self.report.pluginParameters = self.request.pluginParameters
 		if self.request.type == 'systemRequest':
-			self.report.destination = self.request.destination
 			self.report.subject = self.request.subject
 			self.report.requestFQDN = self.request.FQDN
 			self.report.requestUUID = self.request.UUID
@@ -82,7 +80,6 @@ class Report():
 		self.reason=None
 		self.cycle=None
 		self.subject=None
-		self.destination={}
 		self.target=None
 		self.status='OK'
 		self.message=None
@@ -113,7 +110,6 @@ class Report():
 				'reason':self.reason,
 				'cycle':self.cycle,
 				'subject':self.subject,
-				'destination':self.destination,
 				'target':self.target,
 				'status':self.status,
 				'message':self.message,
@@ -140,7 +136,7 @@ class Report():
 		return self.translator.do(self.construct())
 class ReportRequest():
 	def __init__(self):
-		self.variables = [ 'UUID','timezone','time','FQDN','type','reason','cycle','subject','destination','message','target',
+		self.variables = [ 'UUID','timezone','time','FQDN','type','reason','cycle','subject','message','target',
 				'plugin','pluginHash','pluginTimeout','pluginParameters','evaluators','tags','format','weight_map' ]
 		for variable in self.variables:
 			setattr(self,variable,None)
@@ -163,7 +159,6 @@ class ReportRequest():
 			'reason':self.reason,
 			'cycle':self.cycle,
 			'subject':self.subject,
-			'destination':self.destination,
 			'message':self.message,
 			'target':self.target,
 			'plugin':self.plugin,
@@ -203,8 +198,6 @@ class ReportRequest():
 				raise InvalidReport( 'cycle is not valid.' )
 			if request['subject'] == '' or request['subject'] == None:
 				raise InvalidReport( 'subject is not valid.' )
-			if request['destination'] == '' or request['destination'] == None or not str(type(request['destination'])) == "<type 'dict'>":
-				raise InvalidReport( 'destination is not valid.' )
 			if request['target'] == '' or request['target'] == None:
 				raise InvalidReport( 'target is not valid.' )
 			if request['plugin'] == '' or request['plugin'] == None:
@@ -239,7 +232,7 @@ class ReportRequest():
 			raise Exception(error)
 class SystemRequest():
 	def __init__(self):
-		self.variables = [ 'UUID','timezone','time','FQDN','type','reason','cycle','subject','destination','target',
+		self.variables = [ 'UUID','timezone','time','FQDN','type','reason','cycle','subject','target',
 				'command','tags','message' ]
 		for variable in self.variables:
 			setattr(self,variable,None)
@@ -272,7 +265,6 @@ class SystemRequest():
 			'reason':self.reason,
 			'cycle':self.cycle,
 			'subject':self.subject,
-			'destination':self.destination,
 			'message':self.message,
 			'target':self.target,
 			'command':self.command,
@@ -305,8 +297,6 @@ class SystemRequest():
 				raise InvalidReport( 'cycle is not valid.' )
 			if request['subject'] == '' or request['subject'] == None:
 				raise InvalidReport( 'subject is not valid.' )
-			if request['destination'] == '' or request['destination'] == None or not str(type(request['destination'])) == "<type 'dict'>":
-				raise InvalidReport( 'destination is not valid.' )
 			if request['target'] == '' or request['target'] == None:
 				raise InvalidReport( 'target is not valid.' )
 			if request['command'] == '' or request['command'] == None:
