@@ -36,6 +36,7 @@ my %options =	(	"service"	=> '',
 			"host"		=> '',
 			"broker"	=> 'localhost',
 			"exchange"	=> 'moncli_report_requests',
+			"key"		=> '',
 			"user"		=> 'guest',
 			"password"	=> 'guest',
 			"repository"	=> ''
@@ -45,6 +46,7 @@ GetOptions (	"service=s" 	=> \$options{service},
 		"host=s"	=> \$options{host},
 		"broker=s"	=> \$options{broker},
 		"exchange=s"	=> \$options{exchange},
+		"key=s"		=> \$options{key},
 		"user=s"	=> \$options{user},
 		"password=s"	=> \$options{password},
 		"repository=s"	=> \$options{repository}
@@ -63,7 +65,7 @@ sub SubmitBroker(){
 	my $mq = Net::RabbitMQ->new();
 	$mq->connect($options{broker}, { user => $options{user}, password => $options{password} });
 	$mq->channel_open(1);
-	$mq->publish(1, $options{host},$document);
+	$mq->publish(1, $options{key},$document);
 	$mq->disconnect();
 	return "ok\n";
 }
