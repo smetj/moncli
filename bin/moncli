@@ -638,13 +638,16 @@ class Server():
 		#Define the consume action		
 		while self.block() == True:
 			try:
-				#Initialze Broker
+				#Initialize Broker
 				broker = Broker(	host		= self.address,
 							rx_queue	= rx_queue)
+				
+				#Initialize Handler
 				handler = Handler(	rx_queue=rx_queue,
 							submitReport=broker.submitReport,
 							acknowledgeTag=broker.acknowledgeTag,
 							block=self.block)
+							
 				broker.connection.ioloop.start()
 			except KeyboardInterrupt:
 				handler.jobScheduler.shutdown()
