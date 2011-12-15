@@ -635,30 +635,32 @@ class Server():
 		#Create incoming requests queue
 		rx_queue=Queue.Queue()
 
-		#Initialze Broker
-		broker = Broker(	host		= self.address,
-					rx_queue	= rx_queue,
-					)
-					
-		handler = Handler(	rx_queue=rx_queue,
-					submitReport=broker.submitReport,
-					acknowledgeTag=broker.acknowledgeTag,
-					block=self.block)
 						
 		#Initialize Plugin execute object
 		pluginExecute = PluginExecute()
 		
 		#Define the consume action		
-		try:
-			broker.connection.ioloop.start()
-		except KeyboardInterrupt:
-			handler.jobScheduler.shutdown()
-			self.thread_block=False
-			broker.connection.close()
-			broker.connection.ioloop.start()
-			handler.join()
-			os.remove(self.pid)
-			sys.exit
+		while self.block() == True:
+			try:
+				#Initialze Broker
+				broker = Broker(	host		= self.address,
+							rx_queue	= rx_queue)
+				handler = Handler(	rx_queue=rx_queue,
+							submitReport=broker.submitReport,
+							acknowledgeTag=broker.acknowledgeTag,
+							block=self.block)
+				broker.connection.ioloop.start()
+			except KeyboardInterrupt:
+				handler.jobScheduler.shutdown()
+				self.thread_block=False
+				broker.connection.close()
+				broker.connection.ioloop.start()
+				handler.join()
+				os.remove(self.pid)
+				sys.exit
+			except:
+				time.sleep(1)
+				logger.warn("Broker connection failed, restarting")
 class Help():
 	'''Produces command line help message.'''
 	def __init__(self):
