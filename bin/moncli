@@ -635,10 +635,6 @@ class Server():
 		#Create incoming requests queue
 		rx_queue=Queue.Queue()
 
-						
-		#Initialize Plugin execute object
-		pluginExecute = PluginExecute()
-		
 		#Define the consume action		
 		while self.block() == True:
 			try:
