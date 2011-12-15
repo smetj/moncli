@@ -660,6 +660,7 @@ class Server():
 				os.remove(self.pid)
 				sys.exit
 			except:
+				#TODO(smetj): Create increasing wait.
 				time.sleep(1)
 				logger.warn("Broker connection failed, restarting")
 class Help():
