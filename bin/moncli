@@ -510,6 +510,7 @@ class Broker():
 		else:
 			self.rx_queue.put({'delivery_tag':method.delivery_tag,'data':data})
 class Handler(threading.Thread):
+	''' The handler executes all report requests arriving in its queue (serialize) and submit the reports back into the broker. '''
 	def __init__(self,rx_queue,submitReport,acknowledgeTag,block):
 		threading.Thread.__init__(self)
 		self.rx_queue=rx_queue
@@ -629,6 +630,7 @@ class Server():
 		pidfile.close()
 				
 		#Start logging object
+		#TODO(smetj): Get rid of this global cruft
 		global logger
 		logger = Logger().get()
 
