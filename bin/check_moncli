@@ -57,17 +57,18 @@ my $doc = &GetDoc(	$options{repository},
 			$options{host},
 			$options{service},
 			);
-my $document = &FillBlancs($doc);
-print &SubmitBroker($document);
+my ($document,$uuid) = &FillBlancs($doc);
+print &SubmitBroker($document,$uuid);
 
 sub SubmitBroker(){
 	my $document=shift;
+	my $uuid=shift;
 	my $mq = Net::RabbitMQ->new();
 	$mq->connect($options{broker}, { user => $options{user}, password => $options{password} });
 	$mq->channel_open(1);
 	$mq->publish(1, $options{key},$document);
 	$mq->disconnect();
-	return "ok\n";
+	return sprintf ( "A new Report Request (%s) has been submitted. Waiting for check results.\n",$uuid);
 }
 sub FillBlancs(){
 	my $doc=shift;
@@ -79,7 +80,7 @@ sub FillBlancs(){
 	$json->{'time'} = time();
 	$json->{'timezone'} = "CET";
 	$json->{'target'} = $options{host};
-	return encode_json $json;
+	return (encode_json $json,$json->{'UUID'});
 }
 sub GetDoc(){
 	my $repo=shift;
