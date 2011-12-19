@@ -29,7 +29,7 @@ use Sys::Hostname::FQDN qw(fqdn);
 use Data::UUID;
 use JSON;
 use Data::Dumper;
-
+my $version ='0.1';
 
 #Set default values
 my %options =	(	"service"	=> '',
@@ -49,9 +49,21 @@ GetOptions (	"service=s" 	=> \$options{service},
 		"key=s"		=> \$options{key},
 		"user=s"	=> \$options{user},
 		"password=s"	=> \$options{password},
-		"repository=s"	=> \$options{repository}
+		"repository=s"	=> \$options{repository},
+		"help"		=> \$options{help},
+		"h"		=> \$options{help}
 		);
 
+if ( defined $options{help} || defined $options{h} ){
+	&Help();
+	exit(0);
+}
+
+if ( $options{service} eq '' || $options{host} eq '' || $options{key} eq '' || $options{repository} eq '' ){
+	&Help();
+	print "Either service, host, key or repository is missing.\n";
+	exit(3);
+}
 
 my $doc = &GetDoc(	$options{repository},
 			$options{host},
@@ -110,4 +122,42 @@ sub GetDoc(){
 	
 	my $json = join ( '',@json);
 	return $json;
+}
+sub Help(){
+	print <<HELP
+
+check_moncli $version Copyright 2011 by Jelle Smet development\@smetj.net
+
+Description:
+
+	check_moncli is a Nagios check which facilitates the creation and communication handling of MonCli report requests.
+	
+Usage:
+
+	check_moncli --broker host_name [--exchange name] [--user] [--password] --key indigo --host host_name --service service_name --repository absolute_path
+	
+	
+Parameters:
+
+	--broker	The hostname of a RabbitMQ broker.
+	--exchange	The exchange to which report requests should be submitted.  By default this is moncli_report_requests.
+	--user		The username to authenticate against RabbitMQ.
+	--password	The password to authenticate against RabbitMQ.
+	--key		The name of the Queue on which the Moncli instance you want to reach is listening on.  Most often this is the FQDN of the client.
+	--host		The hostname defined in the Nagios service object.
+	--service	The name of the service defined in the Nagios service object.
+	--repository	The absolute pathname of the report request repository.
+	
+	
+Note:
+
+	The report request repository has following structure:
+	
+		/some/directory/.default/servicename
+		/some/directory/host/servicename
+		...
+	
+	When check_moncli doesn't find a dedicated report request for the defined host and service, it will try to find a report request
+	in the .default directory which matches the service.
+HELP
 }
