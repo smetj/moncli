@@ -462,8 +462,9 @@ class Broker():
 		parameters = pika.ConnectionParameters(host)
 		self.rx_queue=rx_queue
 		self.request = event.ReportRequest()
+		self.lock=threading.Lock()
 		self.connection = SelectConnection(parameters,self.__on_connected)
-		logger.info('Broker started')
+		logger.info('Broker started')		
 	def __on_connected(self,connection):
 		logger.debug('Connecting to broker.')
 		connection.channel(self.__on_channel_open)
@@ -484,22 +485,28 @@ class Broker():
 		self.channel.queue_bind(queue=self.queue_name, exchange='moncli_report_requests_subnet', routing_key=self.subnet_bind_key)
 		self.channel.queue_bind(queue=self.queue_name, exchange='moncli_report_requests', routing_key=self.queue_name)
 	def submitReportRequest(self,data):
+		self.lock.acquire()
 		logger.debug('Submitting a ReportRequest to moncli_report_requests')
 		self.channel.basic_publish(	exchange='moncli_report_requests', 
 						routing_key=self.queue_name, 
 						body=json.dumps(data), 
 						properties=pika.BasicProperties(delivery_mode=2)
 						)
+		self.lock.release()
 	def submitReport(self,data):
+		self.lock.acquire()
 		logger.debug('Submitting a Report to moncli_reports')
 		self.channel.basic_publish(	exchange='moncli_reports', 
 						routing_key='', 
 						body=json.dumps(data), 
 						properties=pika.BasicProperties(delivery_mode=2)
 						)
+		self.lock.release()
 	def acknowledgeTag(self,tag):
+		self.lock.acquire()
 		logger.debug('Acknowledging Tag.')
-		self.channel.basic_ack(delivery_tag=tag)	
+		self.channel.basic_ack(delivery_tag=tag)
+		self.lock.release()
 	def submit2queue(self,ch, method, properties, body):
 		try:
 			data = json.loads(body)
@@ -661,6 +668,14 @@ class Server():
 				sys.exit
 			except:
 				#TODO(smetj): Create increasing wait.
+				#TODO(smetj): Cleanup this cleanup process.
+				broker.connection.close()
+				broker.connection.ioloop.start()
+				del(broker)
+				
+				handler.jobScheduler.shutdown()
+				del(handler)
+				
 				time.sleep(1)
 				logger.warn("Broker connection failed, restarting")
 class Help():
