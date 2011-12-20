@@ -16,6 +16,7 @@ import signal
 import pika
 #import yappi
 #from guppy import hpy
+from warnings import simplefilter
 import logging
 from logging.handlers import RotatingFileHandler
 from pika.adapters import SelectConnection
@@ -29,6 +30,8 @@ from random import randint
 from apscheduler.scheduler import Scheduler
 from platform import system,machine
 from hashlib import md5
+from datetime import datetime, timedelta
+
 __version__='0.1.8'
 
 class RequestProcessor(threading.Thread):
@@ -179,7 +182,7 @@ class PluginExecute():
 		if parameters == None or parameters == '':
 			command=command
 		else:
-			command = "%s %s"%(command," ".join(parameters))
+			command = "%s %s"%(command,parameters)
 		shell = Popen(command, shell=True, bufsize=0,stdin=PIPE, stdout=PIPE, stderr=PIPE, close_fds=True)
 		(child_stdin, child_stdout, child_stderr) = (shell.stdin, shell.stdout,shell.stderr)	
 		start=time.time()
@@ -378,11 +381,11 @@ class PluginManager():
 		#Make executable
 		os.chmod(local_repository+'/'+command+'/'+hash,0750)
 class JobScheduler():
-	def __init__(self,cache_file,rx_queue,random_wait=False):
+	def __init__(self,cache_file,rx_queue,rand_window=60):
 		self.cache_file=cache_file
 		self.rx_queue=rx_queue
 		self.logger=logger
-		self.random_wait=random_wait
+		self.rand_window=rand_window
 		self.jobs={}
 		self.raw_jobs={}
 		self.sched = Scheduler()
@@ -393,16 +396,21 @@ class JobScheduler():
 		'''Incoming documents are incapsulated into a dictionary.
 		{ 'scheduled':True,'data':data }'''
 		data={ 'scheduled':True, 'data':data }
-		name = data['data']['target']+data['data']['subject']
+		name = '%s:%s'%(data['data']['target'],data['data']['subject'])
 		if int(data['data']['cycle']) > 0:
 			self.raw_jobs[name]=data
 			if self.jobs.has_key(name):
+				logger.debug ('Already a job with name %s exits, deleting from scheduler.'%name)
 				self.sched.unschedule_job(self.jobs[name])
 				del(self.jobs[name])
+				
+			random_wait = randint(1,int(self.rand_window))
+			logger.debug ( "Generated a random wait of %s seconds for job %s."%(random_wait,name) )
 			self.jobs[name]=self.sched.add_interval_job(	self.submit,
 									seconds=int(data['data']['cycle']),
 									name = name,
-									kwargs={'data':data}
+									kwargs={'data':data},
+									start_date=datetime.now()+timedelta(0,random_wait)
 									)
 		else:
 			del(self.raw_jobs[name])
@@ -463,7 +471,9 @@ class Broker():
 		self.rx_queue=rx_queue
 		self.request = event.ReportRequest()
 		self.lock=threading.Lock()
+		self.properties = pika.BasicProperties(delivery_mode=2)
 		self.connection = SelectConnection(parameters,self.__on_connected)
+		self.connection.add_backpressure_callback(self.backpressure)
 		logger.info('Broker started')		
 	def __on_connected(self,connection):
 		logger.debug('Connecting to broker.')
@@ -499,7 +509,7 @@ class Broker():
 		self.channel.basic_publish(	exchange='moncli_reports', 
 						routing_key='', 
 						body=json.dumps(data), 
-						properties=pika.BasicProperties(delivery_mode=2)
+						properties=self.properties
 						)
 		self.lock.release()
 	def acknowledgeTag(self,tag):
@@ -516,11 +526,14 @@ class Broker():
 			self.acknowledgeTag(tag=method.delivery_tag)
 		else:
 			self.rx_queue.put({'delivery_tag':method.delivery_tag,'data':data})
+	def backpressure(self):
+		logger.debug('Backpressure detected.')
 class Handler(threading.Thread):
 	''' The handler executes all report requests arriving in its queue (serialize) and submit the reports back into the broker. '''
-	def __init__(self,rx_queue,submitReport,acknowledgeTag,block):
+	def __init__(self,rx_queue,submitReport,acknowledgeTag,rand_window,block):
 		threading.Thread.__init__(self)
 		self.rx_queue=rx_queue
+		self.rand_window=rand_window
 		self.block=block
 		
 		#A function coming from the Broker class to submit the report into the message broker
@@ -533,7 +546,8 @@ class Handler(threading.Thread):
 		
 		#The jobscheduler resubmits a request into the rx_queue
 		self.jobScheduler=JobScheduler(	cache_file	= cli_options.cache,
-						rx_queue	= self.rx_queue
+						rx_queue	= self.rx_queue,
+						rand_window	= self.rand_window
 						)
 		
 		#The pluginmanager selects and verifies the right plugin to execute and downloads an update if required.
@@ -586,7 +600,7 @@ class Profile():
 			print line
 class Server():
 	'''Starts the whole program and blocks from exiting'''
-	def __init__(self,pid=None,address=None,logfile=None,local_repository=None,remote_repository=None,cache=None,lib=None):
+	def __init__(self,pid=None,address=None,logfile=None,local_repository=None,remote_repository=None,cache=None,lib=None,rand_window=None):
 		self.pid=pid
 		self.address=address
 		self.logfile=logfile
@@ -594,6 +608,7 @@ class Server():
 		self.remote_repository=remote_repository
 		self.cache=cache
 		self.lib = lib
+		self.rand_window=rand_window
 		self.thread_block=True
 	def check_running(self):
 		try:
@@ -651,10 +666,16 @@ class Server():
 				broker = Broker(	host		= self.address,
 							rx_queue	= rx_queue)
 				
+				#TODO(smetj): Figure out a way to wait until connection has been setup completely
+				#Waiting untill connection is open
+				#while not broker.connection.is_open():
+				#	time.sleep(0.1)
+					
 				#Initialize Handler
 				handler = Handler(	rx_queue=rx_queue,
 							submitReport=broker.submitReport,
 							acknowledgeTag=broker.acknowledgeTag,
+							rand_window=self.rand_window,
 							block=self.block)
 							
 				broker.connection.ioloop.start()
@@ -706,6 +727,8 @@ class Help():
 		--pid		The location of the pid file.
 		--log		The location of the log file.
 		--lib		The library path to include to the search path.
+		--rand_window	The value in seconds which is added to the first schedule of a job in order to spread jobs.
+				has a default value of 60 seconds.
 						
 Moncli is distributed under the Terms of the GNU General Public License Version 3. (http://www.gnu.org/licenses/gpl-3.0.html)
 
@@ -713,6 +736,7 @@ For more information please visit http://www.smetj.net/moncli/
 ''')
 		return()
 if __name__ == '__main__':
+	simplefilter("ignore", "user")
 	try:
 		#Parse command line options
 		parser = OptionParser()
@@ -723,6 +747,8 @@ if __name__ == '__main__':
 		parser.add_option("--pid", dest="pid",default=os.getcwd()+"/moncli.pid", type="string", help="The location of the pid file.")
 		parser.add_option("--log", dest="log",default=os.getcwd()+"/moncli.log", type="string", help="The location of the log file.")
 		parser.add_option("--lib", dest='lib',default='/opt/moncli/lib/moncli', type='string', help="The library path to include to the search.")
+		parser.add_option("--rand_window", dest='rand_window',default='60', type='string', help="The value in seconds which is added to the first schedule of a job in order to spread jobs.")
+		#TODO(jelle): Get rid of this global cruft too
 		global cli_options
 		cli_options, cli_actions=parser.parse_args()
 		
@@ -737,7 +763,8 @@ if __name__ == '__main__':
 				local_repository=cli_options.local_repository+'/',
 				remote_repository=cli_options.remote_repository,
 				cache=cli_options.cache,
-				lib=cli_options.lib
+				lib=cli_options.lib,
+				rand_window=cli_options.rand_window
 				)
 		
 		#Execute command

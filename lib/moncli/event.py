@@ -338,9 +338,7 @@ class Translate():
 				performance_data = "%s%s=%s;;;; "%(performance_data,evaluator,report['evaluators'][evaluator]['value'])
 			performance_data = "%s [%s]"%(performance_data,report['subject'])
 		else:
-			performance_data=''
-		
-		
+			performance_data=''		
 		if report['format'] == "nagios:service":
 			translated_status='3'
 			if report['status'] == None:
