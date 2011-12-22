@@ -2,7 +2,6 @@
 
 from __future__ import division
 from urllib2 import urlopen
-import Queue
 import threading
 import time
 import re
@@ -632,18 +631,15 @@ class Server():
 				broker.connection.ioloop.start()
 				os.remove(self.pid)
 				sys.exit
-#			except:
-				#TODO(smetj): Create increasing wait.
-				#TODO(smetj): Cleanup this cleanup process.
-#				broker.connection.close()
-#				broker.connection.ioloop.start()
-#				del(broker)
+			except:
+				broker.connection.close()
+				broker.connection.ioloop.start()
+				del(broker)
 				
-#				handler.jobScheduler.shutdown()
-#				del(handler)
-#				
-#				time.sleep(1)
-#				logger.warn("Broker connection failed, restarting")
+				scheduler.shutdown()
+				del(scheduler)
+				
+				logger.warn("Broker connection failed, restarting")
 class Help():
 	'''Produces command line help message.'''
 	def __init__(self):
