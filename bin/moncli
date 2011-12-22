@@ -31,7 +31,7 @@ from platform import system,machine
 from hashlib import md5
 from datetime import datetime, timedelta
 
-__version__='0.1.8'
+__version__='0.2.0'
 
 class ReportRequestExecutor():
 	'''A worker processes receives and executes an incoming request, creates a report, reschedules it if required and submits it to output queue.'''
@@ -600,7 +600,8 @@ class Server():
 		global logger
 		logger = Logger().get()
 
-		#Define the consume action		
+		broker = None
+		scheduler = None		
 		while self.block() == True:
 			try:
 				#Initialize Broker
@@ -631,15 +632,16 @@ class Server():
 				broker.connection.ioloop.start()
 				os.remove(self.pid)
 				sys.exit
-			except:
-				broker.connection.close()
-				broker.connection.ioloop.start()
-				del(broker)
-				
-				scheduler.shutdown()
-				del(scheduler)
-				
+			except Exception as err:
+				if broker != None:
+					broker.connection.close()
+					broker.connection.ioloop.start()
+					del(broker)
+				if scheduler !=None:
+					scheduler.shutdown()
+					del(scheduler)				
 				logger.warn("Broker connection failed, restarting")
+				time.sleep(1)
 class Help():
 	'''Produces command line help message.'''
 	def __init__(self):
@@ -743,5 +745,5 @@ if __name__ == '__main__':
 		sys.stderr.write('\t - Your Python version.\n')
 		sys.stderr.write('\t - The steps to take to reproduce this error.\n')
 		sys.stderr.write('\t - This piece of information: '+ str(type(err))+" "+str(err) + "\n" )
-		sys.stderr.write(str(traceback.print_exc()))
+		#sys.stderr.write(str(traceback.print_exc()))
 		sys.exit(1)
