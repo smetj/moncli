@@ -34,24 +34,19 @@ from datetime import datetime, timedelta
 
 __version__='0.1.8'
 
-class RequestProcessor(threading.Thread):
+class ReportRequestExecutor():
 	'''A worker processes receives and executes an incoming request, creates a report, reschedules it if required and submits it to output queue.'''
-	def __init__(self,request,pluginManager,pluginExecute,logger,submitReport,acknowledgeTag=None,delivery_tag=None):
-		threading.Thread.__init__(self)
+	def __init__(self,request,pluginManager,pluginExecute,logger,submitReport):
 		self.request=request
 		self.pluginManager=pluginManager
 		self.pluginExecute=pluginExecute
 		self.submitReport=submitReport
-		self.acknowledgeTag=acknowledgeTag
 		self.moncli_commands=MoncliCommands
-		self.delivery_tag=delivery_tag
 		
 		self.logger=logger
 	
-		self.calculator = Calculator()
-		self.daemon=True
-		self.start()		
-	def run(self):
+		self.calculator = Calculator()	
+
 		self.event = event.Event()
 		document = self.request
 		try:
@@ -100,8 +95,6 @@ class RequestProcessor(threading.Thread):
 					self.event.report.message=str(type(err))+" "+str(err)
 					self.event.finalizeReport()	
 				self.submitReport (self.event.report.translate())
-				if self.delivery_tag != None:
-					self.acknowledgeTag (tag=self.delivery_tag)
 			elif self.event.request.type == 'systemRequest':
 				try:
 					self.moncli_commands.execute(command=self.event.request.command)
@@ -113,8 +106,6 @@ class RequestProcessor(threading.Thread):
 				
 				self.event.finalizeReport()
 				self.submitReport (self.event.report.translate())
-				if self.delivery_tag != None:
-					self.acknowledgeTag (tag=self.delivery_tag)
 			else:
 				self.logger.critical('Junk package received but not noticed by verification routine. Please report to developer.'%(self.name))
 class BuildMessage():
@@ -381,42 +372,44 @@ class PluginManager():
 		#Make executable
 		os.chmod(local_repository+'/'+command+'/'+hash,0750)
 class JobScheduler():
-	def __init__(self,cache_file,rx_queue,rand_window=60):
+	def __init__(self,cache_file,rand_window=60):
 		self.cache_file=cache_file
-		self.rx_queue=rx_queue
 		self.logger=logger
 		self.rand_window=rand_window
+		self.produceReport=None
 		self.jobs={}
-		self.raw_jobs={}
+		self.job_refs={}
 		self.sched = Scheduler()
-		self.sched.start()
-		self.sched.add_interval_job(self.save,seconds=60,name='Cache saving.')
-		self.load()
+		self.sched.add_interval_job(self.save,seconds=10,name='Cache saving.')
+		self.pluginExecute=PluginExecute(caching=True)
+		self.do_lock=threading.Lock()
 	def do(self,data):
-		'''Incoming documents are incapsulated into a dictionary.
-		{ 'scheduled':True,'data':data }'''
-		data={ 'scheduled':True, 'data':data }
-		name = '%s:%s'%(data['data']['target'],data['data']['subject'])
-		if int(data['data']['cycle']) > 0:
-			self.raw_jobs[name]=data
+		self.do_lock.acquire()
+		name = '%s%s'%(data['target'],data['subject'])
+		if int(data['cycle']) > 0:
 			if self.jobs.has_key(name):
 				logger.debug ('Already a job with name %s exits, deleting from scheduler.'%name)
-				self.sched.unschedule_job(self.jobs[name])
-				del(self.jobs[name])
+				self.deleteJob(name)
+			else:
+				self.jobs.update({name:data})
 				
 			random_wait = randint(1,int(self.rand_window))
-			logger.debug ( "Generated a random wait of %s seconds for job %s."%(random_wait,name) )
-			self.jobs[name]=self.sched.add_interval_job(	self.submit,
-									seconds=int(data['data']['cycle']),
-									name = name,
-									kwargs={'data':data},
-									start_date=datetime.now()+timedelta(0,random_wait)
-									)
+			logger.debug ( "Generated an initial random wait of %s seconds for job %s."%(random_wait,name) )
+			self.job_refs[name]=self.sched.add_interval_job(	self.reportRequestExecutor,
+										seconds=int(data['cycle']),
+										name = name,
+										start_date=datetime.now()+timedelta(0,random_wait),
+										kwargs = { 'data':data }
+										)
 		else:
-			del(self.raw_jobs[name])
 			if self.jobs.has_key(name):
-				self.sched.unschedule_job(self.jobs[name])
-				del(self.jobs[name])
+				self.deleteJob(name)
+			self.reportRequestExecutor(data)
+		self.do_lock.release()
+	def deleteJob(self,name):
+		self.sched.unschedule_job(self.job_refs[name])
+		del(self.jobs[name])
+		del(self.job_refs[name])		
 	def submit(self,data):
 		self.rx_queue.put(data)
 	def shutdown(self):
@@ -425,7 +418,7 @@ class JobScheduler():
 	def save(self):
 		try:
 			output=open(self.cache_file,'wb')
-			pickle.dump(self.raw_jobs,output)
+			pickle.dump(self.jobs,output)
 			output.close()
 			logger.info('Job scheduler: Moncli cache file saved.')
 		except Exception as err:
@@ -433,11 +426,11 @@ class JobScheduler():
 	def load(self):
 		try:
 			input=open(self.cache_file,'r')
-			self.raw_jobs=pickle.load(input)
+			jobs=pickle.load(input)
 			input.close()
-			for element in self.raw_jobs:				
-				self.rx_queue.put(self.raw_jobs[element])
-				self.do(data=self.raw_jobs[element]['data'])
+			for job in jobs:
+				self.do(data=jobs[job])
+			self.jobs=jobs
 			logger.info('Job scheduler: Loaded cache file.')
 		except Exception as err:
 			logger.info('Job scheduler: I could not open cache file: Reason: %s.'%(err))
@@ -445,6 +438,16 @@ class JobScheduler():
 		for job in self.jobs:
 			self.sched.unschedule_job(self.jobs[job])
 			del(self.jobs[job])
+	def reportRequestExecutor(self,data):
+		pluginManager=PluginManager(	local_repository	= cli_options.local_repository,
+						remote_repository	= cli_options.remote_repository,
+						)
+		execute = ReportRequestExecutor (	request= data,
+							pluginManager= pluginManager,
+							pluginExecute= self.pluginExecute,
+							logger= self.logger,
+							submitReport= self.produceReport
+							)	
 class Logger():
 	'''Creates a logger class.'''
 	def __init__(self,loglevel=logging.DEBUG):
@@ -464,16 +467,16 @@ class Logger():
 		return log
 class Broker():
 	'''Handles communication to message broker and initialises queus, exchanges and bindings if missing.'''
-	def __init__(self,host,rx_queue):
+	def __init__(self,host):
 		self.queue_name = getfqdn()
 		self.subnet_bind_key = '172.16.43.0/24'
 		parameters = pika.ConnectionParameters(host)
-		self.rx_queue=rx_queue
 		self.request = event.ReportRequest()
 		self.lock=threading.Lock()
 		self.properties = pika.BasicProperties(delivery_mode=2)
 		self.connection = SelectConnection(parameters,self.__on_connected)
 		self.connection.add_backpressure_callback(self.backpressure)
+		self.addToScheduler=None
 		logger.info('Broker started')		
 	def __on_connected(self,connection):
 		logger.debug('Connecting to broker.')
@@ -481,7 +484,7 @@ class Broker():
 	def __on_channel_open(self,new_channel):
 		self.channel = new_channel
 		self.__initialize()
-		self.channel.basic_consume(self.submit2queue, queue = self.queue_name)
+		self.channel.basic_consume(self.processReportRequest, queue = self.queue_name)
 	def __initialize(self):
 		logger.debug('Creating exchanges, queues and bindings on broker.')
 		self.channel.exchange_declare(exchange='moncli_report_requests_broadcast',type='fanout',durable=True)
@@ -517,7 +520,7 @@ class Broker():
 		logger.debug('Acknowledging Tag.')
 		self.channel.basic_ack(delivery_tag=tag)
 		self.lock.release()
-	def submit2queue(self,ch, method, properties, body):
+	def processReportRequest(self,ch, method, properties, body):
 		try:
 			data = json.loads(body)
 			self.request.integrity(request=data)
@@ -525,68 +528,10 @@ class Broker():
 			logger.warn('Garbage reveived from broker, purging. Reason: %s'%(err))
 			self.acknowledgeTag(tag=method.delivery_tag)
 		else:
-			self.rx_queue.put({'delivery_tag':method.delivery_tag,'data':data})
+			self.addToScheduler(data)
+			self.acknowledgeTag(tag=method.delivery_tag)
 	def backpressure(self):
 		logger.debug('Backpressure detected.')
-class Handler(threading.Thread):
-	''' The handler executes all report requests arriving in its queue (serialize) and submit the reports back into the broker. '''
-	def __init__(self,rx_queue,submitReport,acknowledgeTag,rand_window,block):
-		threading.Thread.__init__(self)
-		self.rx_queue=rx_queue
-		self.rand_window=rand_window
-		self.block=block
-		
-		#A function coming from the Broker class to submit the report into the message broker
-		#Accepts "data" as param
-		self.submitReport=submitReport
-		
-		#A function coming from the Broker class to confirm that the message can be removed (acknowledged) from the broker.
-		#Accepts "tag" as param
-		self.acknowledgeTag=acknowledgeTag
-		
-		#The jobscheduler resubmits a request into the rx_queue
-		self.jobScheduler=JobScheduler(	cache_file	= cli_options.cache,
-						rx_queue	= self.rx_queue,
-						rand_window	= self.rand_window
-						)
-		
-		#The pluginmanager selects and verifies the right plugin to execute and downloads an update if required.
-		self.pluginManager=PluginManager(	local_repository	= cli_options.local_repository,
-							remote_repository	= cli_options.remote_repository,
-							)
-							
-		#The pluginexecute executes a plugin and caches its results so these values
-		#can be added during the next execution cycle.
-		self.pluginExecute=PluginExecute(	caching=True,
-							)
-		self.daemon=True
-		self.start()
-	def run(self):
-		logger.info('Handler Started.')
-		while self.block()==True:
-			while self.rx_queue.qsize() > 0:
-				document = self.rx_queue.get()
-				if document.has_key('scheduled'):
-					#This request is injected from the scheduler.
-					request_processor = RequestProcessor (	request		= document['data'],
-										pluginManager	= self.pluginManager,
-										pluginExecute 	= self.pluginExecute,
-										submitReport  	= self.submitReport,
-										logger		= logger
-										)
-				else:
-					#Means it's a fresh one coming from the broker
-					request_processor = RequestProcessor (	request		= document['data'],
-										pluginManager	= self.pluginManager,
-										pluginExecute 	= self.pluginExecute,
-										submitReport  	= self.submitReport,
-										acknowledgeTag	= self.acknowledgeTag,
-										delivery_tag	= document['delivery_tag'],
-										logger		= logger
-										)
-					#Run this request through the jobScheduler
-					self.jobScheduler.do(data=document['data'])
-			time.sleep(0.1)
 class Profile():
 	'''Used for profiling purposes'''
 	def __init__(self):
@@ -656,49 +601,49 @@ class Server():
 		global logger
 		logger = Logger().get()
 
-		#Create incoming requests queue
-		rx_queue=Queue.Queue()
-
 		#Define the consume action		
 		while self.block() == True:
 			try:
 				#Initialize Broker
-				broker = Broker(	host		= self.address,
-							rx_queue	= rx_queue)
+				broker = Broker(host = self.address)
 				
-				#TODO(smetj): Figure out a way to wait until connection has been setup completely
-				#Waiting untill connection is open
-				#while not broker.connection.is_open():
-				#	time.sleep(0.1)
-					
-				#Initialize Handler
-				handler = Handler(	rx_queue=rx_queue,
-							submitReport=broker.submitReport,
-							acknowledgeTag=broker.acknowledgeTag,
-							rand_window=self.rand_window,
-							block=self.block)
-							
+				#Setup scheduler
+				scheduler = JobScheduler(cache_file = self.cache)
+				
+				#Schedule all incoming report requests
+				broker.addToScheduler = getattr(scheduler,'do')
+				
+				#Send reports back to broker
+				scheduler.produceReport = getattr(broker,'submitReport')
+
+				#Load the scheduler cache if available.
+				scheduler.load()
+				
+				#Start scheduler (and producing eventually)
+				scheduler.sched.start()
+				
+				#Start consuming an block
 				broker.connection.ioloop.start()
+								
 			except KeyboardInterrupt:
-				handler.jobScheduler.shutdown()
+				scheduler.shutdown()
 				self.thread_block=False
 				broker.connection.close()
 				broker.connection.ioloop.start()
-				handler.join()
 				os.remove(self.pid)
 				sys.exit
-			except:
+#			except:
 				#TODO(smetj): Create increasing wait.
 				#TODO(smetj): Cleanup this cleanup process.
-				broker.connection.close()
-				broker.connection.ioloop.start()
-				del(broker)
+#				broker.connection.close()
+#				broker.connection.ioloop.start()
+#				del(broker)
 				
-				handler.jobScheduler.shutdown()
-				del(handler)
-				
-				time.sleep(1)
-				logger.warn("Broker connection failed, restarting")
+#				handler.jobScheduler.shutdown()
+#				del(handler)
+#				
+#				time.sleep(1)
+#				logger.warn("Broker connection failed, restarting")
 class Help():
 	'''Produces command line help message.'''
 	def __init__(self):
