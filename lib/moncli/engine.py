@@ -21,7 +21,6 @@
 #       MA 02110-1301, USA.
 #       
 #
-from __future__ import division
 from urllib2 import urlopen
 from apscheduler.scheduler import Scheduler
 from warnings import simplefilter
@@ -197,7 +196,6 @@ class Broker():
 						)
 		self.lock.release()
 	def submitReport(self,data):
-		print data
 		self.lock.acquire()
 		self.logger.debug('Submitting a Report to moncli_reports')
 		self.channel.basic_publish(	exchange='moncli_reports', 

@@ -21,12 +21,14 @@
 #       MA 02110-1301, USA.
 #       
 #
-import logging
-import os
-import re
+from __future__ import division
 from logging.handlers import RotatingFileHandler
 from platform import system,machine
 from hashlib import md5
+import logging
+import os
+import re
+
 class Calculator():
 	def __init__(self):
 		self.whitelist=[ '+','-','/','*','^','(',')','.',' ' ]
