@@ -335,7 +335,7 @@ class Translate():
 		if len(report['evaluators'].keys()) > 0:
 			performance_data='|'
 			for evaluator in sorted(report['evaluators'].keys()):
-				performance_data = "%s%s=%s;;;; "%(performance_data,evaluator,report['evaluators'][evaluator]['value'])
+				performance_data = "%s%s=%s%s;;;; "%(performance_data,evaluator,report['evaluators'][evaluator]['value'],report['evaluators'][evaluator]['metric'])
 			performance_data = "%s [%s]"%(performance_data,report['subject'])
 		else:
 			performance_data=''		

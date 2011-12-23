@@ -81,7 +81,7 @@ class Server():
 				#Start scheduler (and producing eventually)
 				scheduler.sched.start()
 				
-				#Start consuming an block
+				#Start consuming and block
 				broker.connection.ioloop.start()
 								
 			except KeyboardInterrupt:
