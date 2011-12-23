@@ -1,572 +1,30 @@
 #!/usr/bin/python
 
-from __future__ import division
-from urllib2 import urlopen
-import threading
-import time
-import re
+from optparse import OptionParser
 import os
-import pickle
-import json
 import sys
 import daemon
-import traceback
-import signal
-import pika
-#import yappi
-#from guppy import hpy
-from warnings import simplefilter
-import logging
-from logging.handlers import RotatingFileHandler
-from pika.adapters import SelectConnection
-from subprocess import Popen,PIPE
-from multiprocessing import Manager
-from optparse import OptionParser
-from time import strftime, gmtime
-from socket import gethostname
-from socket import getfqdn
-from random import randint
-from apscheduler.scheduler import Scheduler
-from platform import system,machine
-from hashlib import md5
-from datetime import datetime, timedelta
 
-__version__='0.2.0'
-
-class ReportRequestExecutor():
-	'''A worker processes receives and executes an incoming request, creates a report, reschedules it if required and submits it to output queue.'''
-	def __init__(self,request,pluginManager,pluginExecute,logger,submitReport):
-		self.request=request
-		self.pluginManager=pluginManager
-		self.pluginExecute=pluginExecute
-		self.submitReport=submitReport
-		self.moncli_commands=MoncliCommands
-		
-		self.logger=logger
-	
-		self.calculator = Calculator()	
-
-		self.event = event.Event()
-		document = self.request
-		try:
-			self.event.loadRequest(document)
-		except Exception as error:
-			self.logger.warn('Junk package received. Reason: %s.'%(error))
-		else:
-			if self.event.request.type == 'reportRequest':
-				try:
-					self.logger.info('Worker received a request type report named %s.%s'%(self.event.request.subject,self.event.request.target))
-					#Get plugin
-					command = self.pluginManager.getExecutable(command=document['plugin'],hash=document['pluginHash'])
-					#Execute plugin
-					(self.event.report.raw,self.event.report.verbose,self.event.report.metrics) = self.pluginExecute.do(	command=command,
-																parameters=self.event.request.pluginParameters,
-																hash=self.event.request.pluginHash,
-																timeout=self.event.request.pluginTimeout)
-					#Calculate each evalutor and global status
-					global_status = StatusCalculator(weight_map=self.event.request.weight_map)
-					for evaluator in self.event.request.evaluators:
-						(value,status)	= self.calculator.do(	output=self.event.report.raw,
-											dictionary=self.event.report.metrics,
-											evaluator=self.event.request.evaluators[evaluator]['evaluator'],
-											thresholds=self.event.request.evaluators[evaluator]['thresholds'])
-							
-						self.event.report.addEvaluator(	name=evaluator,
-										status=status,
-										value=value,
-										metric=self.event.request.evaluators[evaluator].get('metric',None),
-										evaluator=self.event.request.evaluators[evaluator]['evaluator'],
-										thresholds=self.event.request.evaluators[evaluator]['thresholds'])
-								
-						global_status.states.append(status)								
-			
-						self.event.report.status=global_status.result()
-							
-						#Replace placeholders in message with values.
-						message=BuildMessage()
-						self.event.report.message=message.generate(evaluators=self.event.report.evaluators,message=self.event.request.message)
-						
-						#Finalize the report
-						self.event.finalizeReport()															
-				except Exception as err:
-					self.logger.critical('An error occured processing "%s" Reason: %s'%(self.event.request.subject,err))
-					self.event.report.status = None
-					self.event.report.message=str(type(err))+" "+str(err)
-					self.event.finalizeReport()	
-				self.submitReport (self.event.report.translate())
-			elif self.event.request.type == 'systemRequest':
-				try:
-					self.moncli_commands.execute(command=self.event.request.command)
-					self.logger.info('Worker received a request type system.')
-				except Exception as err:
-					self.logger.critical('An error occured processing "%s" Reason: %s'%(self.event.request.subject,err))
-					self.event.report.status = None
-					self.event.report.message=str(type(err))+" "+str(err)
-				
-				self.event.finalizeReport()
-				self.submitReport (self.event.report.translate())
-			else:
-				self.logger.critical('Junk package received but not noticed by verification routine. Please report to developer.'%(self.name))
-class BuildMessage():
-	'''Builds human readable summary messages by replacing variables in request.message with their value.'''
-	def __init__(self):
-		pass
-	def generate(self,evaluators,message):
-		for evaluator in evaluators:
-			message=message.replace('#'+str(evaluator),'(%s) %s'%(evaluators[evaluator]['status'],evaluators[evaluator]['value']))
-		return message
-class StatusCalculator():
-	'''Contains a number of methods facilitating different kind of status calculations.'''
-	def __init__(self,weight_map='default',template=None):
-		if weight_map == 'nagios:service':
-			self.template=self.__setNagiosService()
-		elif weight_map == 'nagios:host':
-			self.template=self.__setNagiosHost()
-		else:
-			self.template=self.__setDefault()
-		self.states=[]
-	def result(self):
-		results={}
-		for state in self.states:
-			if self.__templateContainsName(name=state,template=self.template):
-				if not results.has_key(state):
-					results[state]=0
-				results[state]+=1
-		for key in sorted(self.template.iterkeys(),reverse=True):
-			if results.has_key(self.template[key]['name']) and results[self.template[key]['name']] >= self.template[key]['weight'] :
-				return self.template[key]['name']
-		return self.template[sorted(self.template.iterkeys(),reverse=True)[0]]['name']
-	def __setDefault(self):
-		return { 	0: { 'name': 'OK', 'weight': 1}, 
-					1: { 'name': 'warning', 'weight': 1},
-					2: { 'name': 'critical', 'weight': 1},
-					3: { 'name': 'unknown', 'weight': 1} }
-	def __setNagiosService(self):
-		return { 	0: { 'name': 'OK', 'weight': 1}, 
-					1: { 'name': 'warning', 'weight': 1},
-					2: { 'name': 'critical', 'weight': 1},
-					3: { 'name': 'unknown', 'weight': 1} }
-	def __setNagiosHost(self):
-		return { 	0: { 'name': 'OK', 'weight': 1}, 
-					1: { 'name': 'updown', 'weight': 1},
-					2: { 'name': 'down', 'weight': 1},
-					3: { 'name': 'down', 'weight': 1} }
-	def __templateContainsName(self,name,template):
-		for element in template:
-			if template[element]['name'] == name:
-				return True
-		return False
-class PluginExecute():
-	'''Verifies and executes a plugin and keeps track of its cache'''
-	def __init__(self,caching=False):
-		self.output=None
-		self.verbose=None
-		self.dictionary=None
-		self.caching=caching
-		self.cache=Manager().dict()
-	def do(self,command=None,parameters=None,hash=None,timeout=30):
-		normal_output=[]
-		error_output=[]
-		errors=None
-		
-		if parameters == None or parameters == '':
-			command=command
-		else:
-			command = "%s %s"%(command,parameters)
-		shell = Popen(command, shell=True, bufsize=0,stdin=PIPE, stdout=PIPE, stderr=PIPE, close_fds=True)
-		(child_stdin, child_stdout, child_stderr) = (shell.stdin, shell.stdout,shell.stderr)	
-		start=time.time()
-		endtime=int(start)+int(timeout)		
-		while (shell.poll()==None) and (time.time()<endtime):
-			time.sleep(0.5)
-			pass	
-		if (shell.poll()==None):
-			shell.kill()
-			raise RuntimeError("The plugin was killed after running for %s seconds" %(timeout))
-		else:
-			totaltime=time.time()-start	
-			for line in child_stdout:
-				normal_output.append(line.rstrip('\n'))
-			for line in child_stderr:
-				error_output.append(line.rstrip('\n'))
-		if len(error_output) != 0:
-			raise RuntimeError("The plugin returned errors :"+'\n'.join(error_output))
-		
-		(output,verbose,dictionary)=self.__splitOutput(data=normal_output)
-		dictionary["epoch"]=round(time.time())
-		dictionary=self.__cache(plugin=command,dictionary=dictionary)
-		
-		return (output,verbose,dictionary)
-	def __splitOutput(self,data):
-		data=data
-		output=[]
-		verbose=[]
-		dictionary={}
-		while len(data)  != 0:
-			line = data.pop(0)
-			if str(line) == '~==.==~':
-				verbose='\\n'.join(data)
-				break
-			else:
-				output.append(line)
-				try:
-					key_value=line.split(":")
-					dictionary[key_value[0]]=key_value[1]
-				except:
-					pass
-		return (output,verbose,dictionary)
-	def __cache(self,plugin,dictionary):
-		current_dictionary			= dictionary
-		cache_dictionary			= self.cache.get(plugin,current_dictionary)
-		self.cache[plugin]			= dictionary
-		for value in cache_dictionary:
-			current_dictionary['pre_'+value]=cache_dictionary[value]
-		return current_dictionary
-class Calculator():
-	def __init__(self):
-		self.whitelist=[ '+','-','/','*','^','(',')','.',' ' ]
-	def do(self,output,dictionary,evaluator,thresholds):
-		if evaluator[:3] == 're:':
-			value = self.__ShellExecuteegex(output=output,regex=evaluator[3:])
-		elif evaluator[:3] == 'fm:':
-			value = self.__executeFormula(dictionary=dictionary,formula=evaluator[3:])
-		else:
-			raise RuntimeError("The evaluator does not start with a known type: %s" %(evaluator))
-		status = self.__evaluateThresholds(thresholds=thresholds,value=value)
-		return (value,status)
-	def __executeFormula(self,dictionary,formula):
-		for key, val in dictionary.items():
-			formula	= re.sub('(\+|-|\/|\*|\^|\(|\)|\s|^)'+key+'(?=\+|-|\/|\*|\^|\(|\)|\s|\n|$)','\\1 '+str(val),formula)
-		to_evaluate=re.findall('\D',formula)
-		to_evaluate=list(set(to_evaluate))
-		for element in to_evaluate:
-			if not element in self.whitelist:
-				raise RuntimeError("Error in the evaluator formula: %s" %(formula))
-		try:
-			result= round(eval(str(formula)),2)
-		except:
-			result= None
-		return result
-	def __ShellExecuteegex(self,output,regex):
-		matches=0
-		try:
-			for line in output:
-				if re.search(regex,line):
-					matches+=1
-					evaluator=matches
-			return matches
-		except:
-			raise RuntimeError("Error in the eveluator regex: %s -> %s" %(evaluator,evaluators[evaluator][0]))	
-	def __evaluateThresholds(self,thresholds,value):
-		''' Nagios threshold definitions
-			1)	10			< 0 or > 10, (outside the range of {0 .. 10})
-			2)	10:			< 10, (outside {10 .. ~})
-			3)	~:10		> 10, (outside the range of {-~ .. 10})
-			4)	10:20		< 10 or > 20, (outside the range of {10 .. 20})
-			5)	@10:20		>= 10 and <= 20, (inside the range of {10 .. 20})
-		'''
-		evaluator_1=re.compile('(^\d*$)')
-		evaluator_2=re.compile('(^\d*?):$')
-		evaluator_3=re.compile('^~:(\d*)')
-		evaluator_4=re.compile('(\d*):(\d*)')
-		evaluator_5=re.compile('^@(\d*):(\d*)')
-		for threshold in thresholds:
-			if evaluator_1.match(thresholds[threshold]):
-				number=evaluator_1.match(thresholds[threshold])
-				if int(value) < 0 or int(value) > int(number.group(1)):
-					return threshold
-			elif evaluator_2.match(thresholds[threshold]):
-				number=evaluator_2.match(thresholds[threshold])
-				if int(value) < int(number.group(1)):
-					return threshold
-			elif evaluator_3.match(thresholds[threshold]):
-				number=evaluator_3.match(thresholds[threshold])
-				if int(value) < int(number.group(1)):
-					return threshold
-			elif evaluator_4.match(thresholds[threshold]):
-				number=evaluator_4.match(thresholds[threshold])
-				if int(value) < int(number.group(1)) or int(value) > int(number.group(2)):
-					return threshold
-			elif evaluator_5.match(thresholds[threshold]):
-				number=evaluator_5.match(thresholds[threshold])
-				if int(value) >= int(number.group(1)) and int(value) <= int(number.group(2)):
-					return threshold
-			else:
-				raise RuntimeError('Invalid Threshold :'+str(threshold))
-		return "OK"
-class MoncliCommands():
-	def __init__(self,scheduler_methods,logging=None):
-		self.scheduler_methods=scheduler_methods
-		self.logging=logging
-	def execute(self,command):
-		if command == {'system':'shutdown'}:
-			self.__shutdown('now')
-		if command == {'system':'graceful'}:
-			self.__shutdown('graceful')
-		if command == {'scheduler':'reset'}:
-			self.__scheduler('reset')
-		else:
-			self.logging.put(['Error','Unknown command %s'%(command)])
-	def __shutdown(self,data):
-		if data == 'now':
-			self.logging.put(['Normal','Immediate shutdown received. Bye'])
-			time.sleep(2)
-			os.kill(os.getpid(),9)
-		if data == 'graceful':
-			self.logging.put(['Normal','Graceful shutdown received. Bye'])
-			time.sleep(2)
-			os.kill(os.getpid(),2)		
-	def __download(self,data):
-		self.logging.put(['Normal','Download command received.'])
-		filename=data.split('/')[-1]
-		try:
-			urlretrieve(data,filename)
-		except:
-			raise
-	def __scheduler(self,data):
-		if data == 'reset':
-			self.logging.put(['Normal','Performing scheduler reset.'])
-			self.scheduler_methods.reset()
-class PluginManager():
-	'''Provides the name of the plugin to execute, verifies its hash and downloads a new plugin version if required.'''
-	def __init__(self,local_repository,remote_repository):
-		self.local_repository=local_repository
-		self.remote_repository=remote_repository
-		if self.local_repository[-1] != '/':
-			self.local_repository += '/'
-		if self.remote_repository != None and self.remote_repository[-1] != '/':
-			self.remote_repository += '/'
-		logger.debug('PluginManager Initiated')
-	def getExecutable(self,command,hash=None):
-		if not os.path.exists(self.local_repository+command):
-			self.__createCommand(dir=self.local_repository+command)			
-		if not os.path.isfile(self.local_repository+command+'/'+hash) and self.remote_repository != '':
-			self.__downloadVersion(self.remote_repository,self.local_repository,command,hash)
-		if self.__checkHash(fullpath=self.local_repository+'/'+command+'/'+hash,file=hash) == True:
-			return self.local_repository+'/'+command+'/'+hash
-	def __checkHash(self,fullpath,file):
-		plugin = open(fullpath,'r')
-		plugin_hash = md5()
-		plugin_hash.update((''.join(plugin.readlines())))
-		plugin.close()
-		if file != plugin_hash.hexdigest():
-			raise Exception ( 'Plugin filename does not match its hash value.' )
-			logger.warning ( 'Plugin filename %s does not match its hash value %s.'%(file,plugin_hash.hexdigest() ) )
-		return True	
-	def __createCommand(self,dir):
-		os.mkdir(dir)
-	def __downloadVersion(self,remote_repository,local_repository,command,hash):
-		full_url = "%s%s(%s)/%s/%s"%(remote_repository,system(),machine(),command,hash)
-		logger.info ('Downloading update %s.'%(full_url))
-		try:
-			response = urlopen(full_url)
-		except Exception as err:
-			logger.critical ( 'Error downloading update. Reason: %s'%(str(err) + " - "+full_url) )
-			raise Exception (str(err) + " - "+full_url )
-			
-		output = open ( local_repository+'/'+command+'/'+hash, 'w' )
-		output.write(response.read())
-		response.close()
-		output.close()
-		#Make executable
-		os.chmod(local_repository+'/'+command+'/'+hash,0750)
-class JobScheduler():
-	def __init__(self,cache_file,rand_window=60):
-		self.cache_file=cache_file
-		self.logger=logger
-		self.rand_window=rand_window
-		self.produceReport=None
-		self.jobs={}
-		self.job_refs={}
-		self.sched = Scheduler()
-		self.sched.add_interval_job(self.save,seconds=10,name='Cache saving.')
-		self.pluginExecute=PluginExecute(caching=True)
-		self.do_lock=threading.Lock()
-	def do(self,data):
-		self.do_lock.acquire()
-		name = '%s%s'%(data['target'],data['subject'])
-		if int(data['cycle']) > 0:
-			if self.jobs.has_key(name):
-				logger.debug ('Already a job with name %s exits, deleting from scheduler.'%name)
-				self.deleteJob(name)
-			else:
-				self.jobs.update({name:data})
-				
-			random_wait = randint(1,int(self.rand_window))
-			logger.debug ( "Generated an initial random wait of %s seconds for job %s."%(random_wait,name) )
-			self.job_refs[name]=self.sched.add_interval_job(	self.reportRequestExecutor,
-										seconds=int(data['cycle']),
-										name = name,
-										start_date=datetime.now()+timedelta(0,random_wait),
-										kwargs = { 'data':data }
-										)
-		else:
-			if self.jobs.has_key(name):
-				self.deleteJob(name)
-			self.reportRequestExecutor(data)
-		self.do_lock.release()
-	def deleteJob(self,name):
-		self.sched.unschedule_job(self.job_refs[name])
-		del(self.jobs[name])
-		del(self.job_refs[name])		
-	def submit(self,data):
-		self.rx_queue.put(data)
-	def shutdown(self):
-		self.save()		
-		self.sched.shutdown()
-	def save(self):
-		try:
-			output=open(self.cache_file,'wb')
-			pickle.dump(self.jobs,output)
-			output.close()
-			logger.info('Job scheduler: Moncli cache file saved.')
-		except Exception as err:
-			logger.warn('Job scheduler: Moncli cache file could not be saved. Reason: %s.'%(err))
-	def load(self):
-		try:
-			input=open(self.cache_file,'r')
-			jobs=pickle.load(input)
-			input.close()
-			for job in jobs:
-				self.do(data=jobs[job])
-			self.jobs=jobs
-			logger.info('Job scheduler: Loaded cache file.')
-		except Exception as err:
-			logger.info('Job scheduler: I could not open cache file: Reason: %s.'%(err))
-	def reset(self):
-		for job in self.jobs:
-			self.sched.unschedule_job(self.jobs[job])
-			del(self.jobs[job])
-	def reportRequestExecutor(self,data):
-		pluginManager=PluginManager(	local_repository	= cli_options.local_repository,
-						remote_repository	= cli_options.remote_repository,
-						)
-		execute = ReportRequestExecutor (	request= data,
-							pluginManager= pluginManager,
-							pluginExecute= self.pluginExecute,
-							logger= self.logger,
-							submitReport= self.produceReport
-							)	
-class Logger():
-	'''Creates a logger class.'''
-	def __init__(self,loglevel=logging.DEBUG):
-		self.format=logging.Formatter('%(asctime)s %(levelname)s::%(processName)s:%(message)s')
-		self.loglevel=loglevel
-	def get(self,name=None, scrlog=True, txtlog=True):
-		log = logging.getLogger()
-		log.setLevel(self.loglevel)
-		if txtlog == True:
-			txt_handler = logging.FileHandler( cli_options.log )
-			txt_handler.setFormatter(self.format)
-			log.addHandler(txt_handler)
-		if scrlog == True:
-			scr_handler = logging.StreamHandler()
-			scr_handler.setFormatter(self.format)
-			log.addHandler(scr_handler)
-		return log
-class Broker():
-	'''Handles communication to message broker and initialises queus, exchanges and bindings if missing.'''
-	def __init__(self,host):
-		self.queue_name = getfqdn()
-		self.subnet_bind_key = '172.16.43.0/24'
-		parameters = pika.ConnectionParameters(host)
-		self.request = event.ReportRequest()
-		self.lock=threading.Lock()
-		self.properties = pika.BasicProperties(delivery_mode=2)
-		self.connection = SelectConnection(parameters,self.__on_connected)
-		self.connection.add_backpressure_callback(self.backpressure)
-		self.addToScheduler=None
-		logger.info('Broker started')		
-	def __on_connected(self,connection):
-		logger.debug('Connecting to broker.')
-		connection.channel(self.__on_channel_open)
-	def __on_channel_open(self,new_channel):
-		self.channel = new_channel
-		self.__initialize()
-		self.channel.basic_consume(self.processReportRequest, queue = self.queue_name)
-	def __initialize(self):
-		logger.debug('Creating exchanges, queues and bindings on broker.')
-		self.channel.exchange_declare(exchange='moncli_report_requests_broadcast',type='fanout',durable=True)
-		self.channel.exchange_declare(exchange='moncli_report_requests_subnet',type='direct',durable=True)
-		self.channel.exchange_declare(exchange='moncli_report_requests',type='direct',durable=True)
-		self.channel.exchange_declare(exchange='moncli_reports',type='fanout',durable=True)
-		self.channel.queue_declare(queue=self.queue_name,durable=True)
-		self.channel.queue_declare(queue='moncli_reports',durable=True)
-		self.channel.queue_bind(queue=self.queue_name, exchange='moncli_report_requests_broadcast')
-		self.channel.queue_bind(queue='moncli_reports', exchange='moncli_reports')
-		self.channel.queue_bind(queue=self.queue_name, exchange='moncli_report_requests_subnet', routing_key=self.subnet_bind_key)
-		self.channel.queue_bind(queue=self.queue_name, exchange='moncli_report_requests', routing_key=self.queue_name)
-	def submitReportRequest(self,data):
-		self.lock.acquire()
-		logger.debug('Submitting a ReportRequest to moncli_report_requests')
-		self.channel.basic_publish(	exchange='moncli_report_requests', 
-						routing_key=self.queue_name, 
-						body=json.dumps(data), 
-						properties=pika.BasicProperties(delivery_mode=2)
-						)
-		self.lock.release()
-	def submitReport(self,data):
-		self.lock.acquire()
-		logger.debug('Submitting a Report to moncli_reports')
-		self.channel.basic_publish(	exchange='moncli_reports', 
-						routing_key='', 
-						body=json.dumps(data), 
-						properties=self.properties
-						)
-		self.lock.release()
-	def acknowledgeTag(self,tag):
-		self.lock.acquire()
-		logger.debug('Acknowledging Tag.')
-		self.channel.basic_ack(delivery_tag=tag)
-		self.lock.release()
-	def processReportRequest(self,ch, method, properties, body):
-		try:
-			data = json.loads(body)
-			self.request.integrity(request=data)
-		except Exception as err:
-			logger.warn('Garbage reveived from broker, purging. Reason: %s'%(err))
-			self.acknowledgeTag(tag=method.delivery_tag)
-		else:
-			self.addToScheduler(data)
-			self.acknowledgeTag(tag=method.delivery_tag)
-	def backpressure(self):
-		logger.debug('Backpressure detected.')
-class Profile():
-	'''Used for profiling purposes'''
-	def __init__(self):
-		yappi.start()
-		self.yappi_results = open ( '/opt/moncli/var/profile.yappi','w' )
-	def write(self):
-		for line in yappi.get_stats(	yappi.SORTTYPE_TTOTAL,
-						yappi.SORTORDER_ASCENDING,
-						yappi.SHOW_ALL):
-			self.yappi_results.write(line+"\n")
-			print line
 class Server():
 	'''Starts the whole program and blocks from exiting'''
-	def __init__(self,pid=None,address=None,logfile=None,local_repository=None,remote_repository=None,cache=None,lib=None,rand_window=None):
-		self.pid=pid
-		self.address=address
-		self.logfile=logfile
-		self.local_repository=local_repository
-		self.remote_repository=remote_repository
-		self.cache=cache
-		self.lib = lib
-		self.rand_window=rand_window
+	def __init__(self,config=None,log_file=True,log_screen=True):
+		self.config=config
+		self.log_file=log_file
+		self.log_screen=log_screen
 		self.thread_block=True
-	def check_running(self):
+	def checkRunning(self):
 		try:
-			if os.path.exists(self.pid):
-				pidfile = open(self.pid,'r')
+			if os.path.exists(self.config['pid']):
+				pidfile = open(self.config['pid'],'r')
 				pid=pidfile.readline()
 				pidfile.close()
 				try:
 					os.kill(int(pid), 0)
 				except OSError:
 					try:
-						os.remove(self.pid)
+						os.remove(self.config['pid'])
 					except Exception as err:
-						sys.stderr.write('I could not delete pid %s. Reason: %s\n'%(self.pid,err))
+						sys.stderr.write('I could not delete pid %s. Reason: %s\n'%(self.config['pid'],err))
 						sys.exit(1)					
 				else:
 					sys.stderr.write('There is already a version of Moncli running with PID %s\n'%(pid))
@@ -579,36 +37,37 @@ class Server():
 	def stop(self):
 		sys.stdout.write('Stopping all queues in a polite way. Sending a Sigint (2) again will make me exit (or moncli stop).\n')
 		try:
-			pidfile = open(self.pid,'r')
+			pidfile = open(self.config['pid'],'r')
 			os.kill(int(pidfile.readline()),2)
 			pidfile.close()
 		except Exception as err:
 			sys.stdout.write('I could not stop Moncli. Reason: %s\n'%(err))
 	def start(self):
-		#Profiler
+		#Enable profiling.
+		#from tools import Profile
 		#prof = Profile()
 		
-		sys.path.append(self.lib)
+		sys.path.append(self.config['lib'])
 
 		#Create pid
-		pidfile=open(self.pid,'w')
+		pidfile=open(self.config['pid'],'w')
 		pidfile.write(str(os.getpid()))
 		pidfile.close()
 				
 		#Start logging object
-		#TODO(smetj): Get rid of this global cruft
-		global logger
-		logger = Logger().get()
-
+		logger = tools.Logger(file=self.config['log'],scrlog = self.log_screen, txtlog = self.log_file)
+		local_log = logger.get(name='Main')
+		
 		broker = None
 		scheduler = None		
 		while self.block() == True:
 			try:
 				#Initialize Broker
-				broker = Broker(host = self.address)
+				broker = engine.Broker(host = self.config['broker'],logger=logger)
 				
 				#Setup scheduler
-				scheduler = JobScheduler(cache_file = self.cache)
+				scheduler = engine.JobScheduler(	config = self.config,									
+									logger=logger)
 				
 				#Schedule all incoming report requests
 				broker.addToScheduler = getattr(scheduler,'do')
@@ -630,7 +89,7 @@ class Server():
 				self.thread_block=False
 				broker.connection.close()
 				broker.connection.ioloop.start()
-				os.remove(self.pid)
+				os.remove(self.config['pid'])
 				sys.exit
 			except Exception as err:
 				if broker != None:
@@ -640,46 +99,9 @@ class Server():
 				if scheduler !=None:
 					scheduler.shutdown()
 					del(scheduler)				
-				logger.warn("Broker connection failed, restarting")
+				local_log.warn("Broker connection failed, restarting")
 				time.sleep(1)
-class Help():
-	'''Produces command line help message.'''
-	def __init__(self):
-		pass
-	def usage(self):
-		print ('Moncli %s Copyright 2011 by Jelle Smet <web@smetj.net>' %(__version__))
-		print ('''Usage: moncli command [--broker address] [--local_repo directory] [--remote_repo url] [--cache filename] [--pid filename] [--log filename]
-	
-	Valid commands: 
-	
-		start	Starts the Moncli daemon in the background.
-					
-		stop	Gracefully stops the Moncli daemon running in the background.
-
-		kill	Kills the Moncli daemon running with the pid defined in your config file.
-			
-		debug	Starts the Moncli daemon in the foreground while showing real time log and debug messages.
-			The process can be stopped with ctrl+c which will ends Moncli gracefully.
-			A second ctrl+c will kill Moncli.
-				
-	Parameters: 
-		--broker	The ipaddress of the message broker Moncli should listen to.
-		--local_repo	The location of the local plugin repository.
-		--remote_repo	The location of the remote plugin repository.
-		--cache		The location where the configuration cache is written and read from on startup.
-		--pid		The location of the pid file.
-		--log		The location of the log file.
-		--lib		The library path to include to the search path.
-		--rand_window	The value in seconds which is added to the first schedule of a job in order to spread jobs.
-				has a default value of 60 seconds.
-						
-Moncli is distributed under the Terms of the GNU General Public License Version 3. (http://www.gnu.org/licenses/gpl-3.0.html)
-
-For more information please visit http://www.smetj.net/moncli/
-''')
-		return()
 if __name__ == '__main__':
-	simplefilter("ignore", "user")
 	try:
 		#Parse command line options
 		parser = OptionParser()
@@ -689,39 +111,33 @@ if __name__ == '__main__':
 		parser.add_option("--cache", dest="cache", default=os.getcwd()+'/moncli.cache', type="string", help="Scheduler configuration cache.")
 		parser.add_option("--pid", dest="pid",default=os.getcwd()+"/moncli.pid", type="string", help="The location of the pid file.")
 		parser.add_option("--log", dest="log",default=os.getcwd()+"/moncli.log", type="string", help="The location of the log file.")
-		parser.add_option("--lib", dest='lib',default='/opt/moncli/lib/moncli', type='string', help="The library path to include to the search.")
+		parser.add_option("--lib", dest='lib',default='/opt/moncli/lib', type='string', help="The library path to include to the search.")
 		parser.add_option("--rand_window", dest='rand_window',default='60', type='string', help="The value in seconds which is added to the first schedule of a job in order to spread jobs.")
-		#TODO(jelle): Get rid of this global cruft too
-		global cli_options
+
 		cli_options, cli_actions=parser.parse_args()
-		
+		config = vars(cli_options)
+				
 		##Extend path environment
-		sys.path.append(cli_options.lib)
-		import event
-		__import__('event')
-		
-		server = Server	(pid=cli_options.pid,
-				address=cli_options.broker,
-				logfile=cli_options.log,
-				local_repository=cli_options.local_repository+'/',
-				remote_repository=cli_options.remote_repository,
-				cache=cli_options.cache,
-				lib=cli_options.lib,
-				rand_window=cli_options.rand_window
-				)
+		sys.path.append(cli_options.lib)		
+		from moncli import engine
+		from moncli import tools
+		from moncli import event
+		from moncli.help import help
+		server = Server (config = config)		
 		
 		#Execute command
 		if len(cli_actions) != 1:
-			Help().usage()
+			help()
 			sys.exit
 		elif cli_actions[0] == 'start':
-			server.check_running()
 			print ("Starting Moncli in background.")
+			server.log_screen = False
+			server.checkRunning()
 			with daemon.DaemonContext():
 				server.start()
-		elif cli_actions[0] == 'debug':	
+		elif cli_actions[0] == 'debug':
 			print ("Starting Moncli in foreground.")
-			server.check_running()
+			server.checkRunning()
 			server.start()
 		elif cli_actions[0] == 'stop':
 			print ("Stopping Moncli gracefully.  Tail log for progress.")
@@ -732,7 +148,7 @@ if __name__ == '__main__':
 		elif cli_actions[0] == 'dump':
 			pass
 		else:
-			Help().usage()
+			help()
 			print ('Unknown option %s \n' %(cli_actions[0]))
 			sys.exit()
 	except Exception as err:
