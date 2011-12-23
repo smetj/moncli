@@ -22,7 +22,7 @@
 #       
 #
 from urllib2 import urlopen
-from apscheduler.scheduler import Scheduler
+from apscheduler import scheduler
 from warnings import simplefilter
 from pika.adapters import SelectConnection
 from socket import getfqdn
@@ -82,8 +82,8 @@ class JobScheduler():
 		self.produceReport=None
 		self.jobs={}
 		self.job_refs={}
-		logger=logger.get()
-		self.sched = Scheduler()
+		scheduler.logger=self.logger
+		self.sched = scheduler.Scheduler()
 		self.sched.add_interval_job(self.save,seconds=10,name='Cache saving.')
 		self.pluginExecute=PluginExecute(caching=True)
 		self.do_lock=Lock()
