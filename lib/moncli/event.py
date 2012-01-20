@@ -1,11 +1,11 @@
 #!/usr/bin/env python
 # -*- coding: utf-8 -*-
 #
-#       communication.py
+#       event.py
 #       
 #       Copyright 2010 Jelle Smet <web@smetj.net>
 #       
-#       This file is part of Monitoring python library.
+#       This file is part of Moncli.
 #       
 #           Monitoring python library is free software: you can redistribute it and/or modify
 #           it under the terms of the GNU General Public License as published by
