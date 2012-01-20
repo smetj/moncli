@@ -38,19 +38,19 @@ def help():
         kill    Kills the Moncli daemon running with the pid defined in your config file.
             
         debug   Starts the Moncli daemon in the foreground while showing real time log and debug messages.
-            The process can be stopped with ctrl+c which will ends Moncli gracefully.
-            A second ctrl+c will kill Moncli.
+                The process can be stopped with ctrl+c which will ends Moncli gracefully.
+                A second ctrl+c will kill Moncli.
                 
     Parameters: 
-        --broker    The ipaddress of the message broker Moncli should listen to.
+        --broker        The ipaddress of the message broker Moncli should listen to.
         --local_repo    The location of the local plugin repository.
         --remote_repo   The location of the remote plugin repository.
-        --cache     The location where the configuration cache is written and read from on startup.
-        --pid       The location of the pid file.
-        --log       The location of the log file.
-        --lib       The library path to include to the search path.
+        --cache         The location where the configuration cache is written and read from on startup.
+        --pid           The location of the pid file.
+        --log           The location of the log file.
+        --lib           The library path to include to the search path.
         --rand_window   The value in seconds which is added to the first schedule of a job in order to spread jobs.
-                has a default value of 60 seconds.
+                        Default value is 60 seconds.
                         
 Moncli is distributed under the Terms of the GNU General Public License Version 3. (http://www.gnu.org/licenses/gpl-3.0.html)
 
