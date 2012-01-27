@@ -67,7 +67,7 @@ class Server():
                 broker = engine.Broker(host = self.config['broker'],logger=logger)
                 
                 #Setup scheduler
-                scheduler = engine.JobScheduler2(logger=logger.get())
+                scheduler = engine.JobScheduler(logger=logger.get())
                 
                 #Schedule all incoming report requests
                 broker.addToScheduler = getattr(scheduler,'do')
