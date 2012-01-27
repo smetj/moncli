@@ -35,6 +35,7 @@ from subprocess import Popen,PIPE
 from tools import PluginManager
 from tools import Calculator
 from tools import StatusCalculator
+from moncli.event2 import Request
 import pika
 import pickle
 import json
@@ -75,98 +76,19 @@ class MoncliCommands():
         if data == 'reset':
             self.logging.put(['Normal','Performing scheduler reset.'])
             self.scheduler_methods.reset()   
-class JobScheduler():
-    def __init__(self,config,logger):
-        self.config=config
-        self.logger=logger.get(name='JobScheduler')
-        self.produceReport=None
-        self.jobs={}
-        self.job_refs={}
-        scheduler.logger=self.logger
-        self.sched = scheduler.Scheduler()
-        self.sched.add_interval_job(self.save,seconds=10,name='Cache saving.')
-        self.pluginExecute=PluginExecute(caching=True)
-        self.do_lock=Lock()
-    def do(self,data):
-        self.do_lock.acquire()
-        name = '%s:%s'%(data['target'],data['subject'])
-        if int(data['cycle']) > 0:
-            if self.jobs.has_key(name):
-                self.logger.debug ('Already a job with name %s exits, deleting from scheduler.'%name)
-                self.deleteJob(name)
-            else:
-                self.jobs.update({name:data})
-                
-            random_wait = randint(1,int(self.config['rand_window']))
-            self.logger.debug ( "Generated an initial random wait of %s seconds for job %s."%(random_wait,name) )
-            self.job_refs[name]=self.sched.add_interval_job(    self.reportRequestExecutor,
-                                        seconds=int(data['cycle']),
-                                        name = name,
-                                        start_date=datetime.now()+timedelta(0,random_wait),
-                                        kwargs = { 'data':data }
-                                        )
-        else:
-            if self.jobs.has_key(name):
-                self.deleteJob(name)
-            self.reportRequestExecutor(data)
-        self.do_lock.release()
-    def deleteJob(self,name):
-        self.sched.unschedule_job(self.job_refs[name])
-        del(self.jobs[name])
-        del(self.job_refs[name])        
-    def submit(self,data):
-        self.rx_queue.put(data)
-    def shutdown(self):
-        self.save()     
-        self.sched.shutdown()
-    def save(self):
-        try:
-            output=open(self.config['cache'],'wb')
-            pickle.dump(self.jobs,output)
-            output.close()
-            self.logger.info('Job scheduler: Moncli cache file saved.')
-        except Exception as err:
-            self.logger.warn('Job scheduler: Moncli cache file could not be saved. Reason: %s.'%(err))
-    def load(self):
-        try:
-            input=open(self.config['cache'],'r')
-            jobs=pickle.load(input)
-            input.close()
-            for job in jobs:
-                self.do(data=jobs[job])
-            self.jobs=jobs
-            self.logger.info('Job scheduler: Loaded cache file.')
-        except Exception as err:
-            self.logger.info('Job scheduler: I could not open cache file: Reason: %s.'%(err))
-    def reset(self):
-        for job in self.jobs:
-            self.sched.unschedule_job(self.jobs[job])
-            del(self.jobs[job])
-    def reportRequestExecutor(self,data):
-        pluginManager=PluginManager(    local_repository    = self.config['local_repository'],
-                        remote_repository   = self.config['remote_repository'],
-                        logger          = self.logger
-                        )
-        execute = ReportRequestExecutor (   request= data,
-                            pluginManager= pluginManager,
-                            pluginExecute= self.pluginExecute,
-                            logger= self.logger,
-                            submitReport= self.produceReport
-                            )
 class Broker():
     '''Handles communication to message broker and initialises queus, exchanges and bindings if missing.'''
     def __init__(self,host,logger):
         self.queue_name = getfqdn()
         self.subnet_bind_key = '172.16.43.0/24'
         parameters = pika.ConnectionParameters(host)
-        self.request = event.ReportRequest()
         self.lock=Lock()
         self.properties = pika.BasicProperties(delivery_mode=2)
         self.connection = SelectConnection(parameters,self.__on_connected)
         self.connection.add_backpressure_callback(self.backpressure)
         self.addToScheduler=None
         self.logger=logger.get(name='Broker')
-        self.logger.info('Broker started')      
+        self.logger.info('Broker started')
     def __on_connected(self,connection):
         self.logger.debug('Connecting to broker.')
         connection.channel(self.__on_channel_open)
@@ -196,6 +118,7 @@ class Broker():
                         )
         self.lock.release()
     def submitReport(self,data):
+        print data
         self.lock.acquire()
         self.logger.debug('Submitting a Report to moncli_reports')
         self.channel.basic_publish( exchange='moncli_reports', 
@@ -212,7 +135,7 @@ class Broker():
     def processReportRequest(self,ch, method, properties, body):
         try:
             data = json.loads(body)
-            self.request.integrity(request=data)
+            Request.validate(data=data)
         except Exception as err:
             self.logger.warn('Garbage reveived from broker, purging. Reason: %s'%(err))
             self.acknowledgeTag(tag=method.delivery_tag)
@@ -295,77 +218,74 @@ class BuildMessage():
         for evaluator in evaluators:
             message=message.replace('#'+str(evaluator),'(%s) %s'%(evaluators[evaluator]['status'],evaluators[evaluator]['value']))
         return message
-class ReportRequestExecutor():
-    '''A worker processes receives and executes an incoming request, creates a report, reschedules it if required and submits it to output queue.'''
-    def __init__(self,request,pluginManager,pluginExecute,logger,submitReport):
-        self.request=request
-        self.pluginManager=pluginManager
-        self.pluginExecute=pluginExecute
-        self.submitReport=submitReport
-        self.moncli_commands=MoncliCommands
-        
+class JobScheduler():
+    def __init__(self,logger):
         self.logger=logger
-    
-        self.calculator = Calculator()  
-
-        self.event = event.Event()
-        document = self.request
-        try:
-            self.event.loadRequest(document)
-        except Exception as error:
-            self.logger.warn('Junk package received. Reason: %s.'%(error))
+        self.sched=scheduler.Scheduler()
+        self.submitBroker=None
+        self.sched.start()
+        self.request={}        
+        self.do_lock=Lock()
+    def do(self,doc):
+        self.do_lock.acquire()
+        name = self.__name(doc)
+        if self.request.has_key(name):
+            self.__unschedule(name=name, object = self.request[name][scheduler])
+        if doc['request']['cycle'] == 0:
+            self.logger.debug ('Executed imediately job %s'%(name))
+            job=ReportRequestExecutor2(local_repo='/opt/moncli/lib/repository',remote_repo='http://blah',logger=self.logger)
+            job.do(doc=doc)
         else:
-            if self.event.request.type == 'reportRequest':
-                try:
-                    self.logger.info('Worker received a request type report named %s.%s'%(self.event.request.subject,self.event.request.target))
-                    #Get plugin
-                    command = self.pluginManager.getExecutable(command=document['plugin'],hash=document['pluginHash'])
-                    #Execute plugin
-                    (self.event.report.raw,self.event.report.verbose,self.event.report.metrics) = self.pluginExecute.do(    command=command,
-                                                                parameters=self.event.request.pluginParameters,
-                                                                hash=self.event.request.pluginHash,
-                                                                timeout=self.event.request.pluginTimeout)
-                    #Calculate each evalutor and global status
-                    global_status = StatusCalculator(weight_map=self.event.request.weight_map)
-                    for evaluator in self.event.request.evaluators:
-                        (value,status)  = self.calculator.do(   output=self.event.report.raw,
-                                            dictionary=self.event.report.metrics,
-                                            evaluator=self.event.request.evaluators[evaluator]['evaluator'],
-                                            thresholds=self.event.request.evaluators[evaluator]['thresholds'])
-                            
-                        self.event.report.addEvaluator( name=evaluator,
-                                        status=status,
-                                        value=value,
-                                        metric=self.event.request.evaluators[evaluator].get('metric',None),
-                                        evaluator=self.event.request.evaluators[evaluator]['evaluator'],
-                                        thresholds=self.event.request.evaluators[evaluator]['thresholds'])
-                                
-                        global_status.states.append(status)                             
-            
-                        self.event.report.status=global_status.result()
-                            
-                        #Replace placeholders in message with values.
-                        message=BuildMessage()
-                        self.event.report.message=message.generate(evaluators=self.event.report.evaluators,message=self.event.request.message)
-                        
-                        #Finalize the report
-                        self.event.finalizeReport()                                                         
-                except Exception as err:
-                    self.logger.critical('An error occured processing "%s" Reason: %s'%(self.event.request.subject,err))
-                    self.event.report.status = None
-                    self.event.report.message=str(type(err))+" "+str(err)
-                    self.event.finalizeReport() 
-                self.submitReport (self.event.report.translate())
-            elif self.event.request.type == 'systemRequest':
-                try:
-                    self.moncli_commands.execute(command=self.event.request.command)
-                    self.logger.info('Worker received a request type system.')
-                except Exception as err:
-                    self.logger.critical('An error occured processing "%s" Reason: %s'%(self.event.request.subject,err))
-                    self.event.report.status = None
-                    self.event.report.message=str(type(err))+" "+str(err)
-                
-                self.event.finalizeReport()
-                self.submitReport (self.event.report.translate())
-            else:
-                self.logger.critical('Junk package received but not noticed by verification routine. Please report to developer.'%(self.name))      
+            self.__schedule(doc=doc)
+        self.do_lock.release()
+    def __unschedule(self,name,object):
+        self.logger.debug ('Unscheduled job %s'%(name))
+        self.sched.unschedule_job(object)
+        del self.request[name]        
+    def __register(self,doc):
+        name = self.__name(doc)
+        self.logger.debug ('Registered job %s'%(name))
+        self.request[name]={ 'function' : None, 'scheduler': None }
+        self.request[name]['function']=ReportRequestExecutor2(local_repo='/opt/moncli/lib/repository',
+                                                    remote_repo='http://blah',
+                                                    submitBroker=self.submitBroker,
+                                                    logger=self.logger)        
+    def __schedule(self,doc):
+        name = self.__name(doc)
+        self.logger.debug ('Scheduled job %s'%(name))
+        random_wait = randint(1,int(60))
+        self.__register(doc)
+        self.request[name][scheduler]=self.sched.add_interval_job( self.request[name]['function'].do,
+                                                        seconds=int(doc['request']['cycle']),
+                                                        name = name,
+                                                        start_date=datetime.now()+timedelta(0,random_wait),
+                                                        kwargs = { 'doc':doc })
+    def __name(self,doc):
+        return '%s:%s'%(doc['destination']['name'],doc['destination']['subject'])
+class ReportRequestExecutor():
+    def __init__(self,local_repo, remote_repo,submitBroker,logger):
+        self.pluginManager = PluginManager( local_repository = local_repo,
+                                remote_repository = remote_repo,
+                                logger = logger)
+        self.pluginExecute=PluginExecute(caching=True)
+        self.calculator = Calculator()
+        self.submitBroker=submitBroker
+        self.logger = logger
+    def do(self,doc):
+        request = Request(doc=doc)
+        self.logger.info('Executing a request with destination %s:%s'%(doc['destination']['name'],doc['destination']['subject']))
+        
+        #Get plugin to execute
+        command = self.pluginManager.getExecutable(command=request.plugin['name'],hash=request.plugin['hash'])
+        
+        #Execute the plugin
+        (request.answer['plugin']['raw'],
+        request.answer['plugin']['verbose'],
+        request.answer['plugin']['metrics']) = self.pluginExecute.do( command=command,
+                                                    parameters=request.plugin['parameters'],
+                                                    hash=request.plugin['hash'],
+                                                    timeout=request.plugin['timeout'] )
+
+        #Calculate each evaluator
+        request.calculate()
+        self.submitBroker(request.answer)
