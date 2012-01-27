@@ -219,12 +219,13 @@ class BuildMessage():
             message=message.replace('#'+str(evaluator),'(%s) %s'%(evaluators[evaluator]['status'],evaluators[evaluator]['value']))
         return message
 class JobScheduler():
-    def __init__(self,logger):
+    def __init__(self,cache_file,logger):
         self.logger=logger
         self.sched=scheduler.Scheduler()
         self.submitBroker=None
         self.sched.start()
         self.request={}        
+        self.cache_file=cache_file
         self.do_lock=Lock()
     def do(self,doc):
         self.do_lock.acquire()
@@ -237,6 +238,7 @@ class JobScheduler():
             job.do(doc=doc)
         else:
             self.__schedule(doc=doc)
+        self.__save()
         self.do_lock.release()
     def __unschedule(self,name,object):
         self.logger.debug ('Unscheduled job %s'%(name))
@@ -245,8 +247,9 @@ class JobScheduler():
     def __register(self,doc):
         name = self.__name(doc)
         self.logger.debug ('Registered job %s'%(name))
-        self.request[name]={ 'function' : None, 'scheduler': None }
-        self.request[name]['function']=ReportRequestExecutor2(local_repo='/opt/moncli/lib/repository',
+        self.request[name]={ 'function' : None, 'scheduler': None, 'document': None }
+        self.request[name]['document']=doc
+        self.request[name]['function']=ReportRequestExecutor(local_repo='/opt/moncli/lib/repository',
                                                     remote_repo='http://blah',
                                                     submitBroker=self.submitBroker,
                                                     logger=self.logger)        
@@ -262,6 +265,16 @@ class JobScheduler():
                                                         kwargs = { 'doc':doc })
     def __name(self,doc):
         return '%s:%s'%(doc['destination']['name'],doc['destination']['subject'])
+    def __save(self):
+        try:
+            output=open(self.cache_file,'wb')
+            for doc in self.request:
+                pickle.dump(self.request[doc]['document'],output)
+            output.close()
+            self.logger.info('Job scheduler: Moncli cache file saved.')
+        except Exception as err:
+            self.logger.warn('Job scheduler: Moncli cache file could not be saved. Reason: %s.'%(err))
+        
 class ReportRequestExecutor():
     def __init__(self,local_repo, remote_repo,submitBroker,logger):
         self.pluginManager = PluginManager( local_repository = local_repo,

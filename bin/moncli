@@ -67,7 +67,7 @@ class Server():
                 broker = engine.Broker(host = self.config['broker'],logger=logger)
                 
                 #Setup scheduler
-                scheduler = engine.JobScheduler(logger=logger.get())
+                scheduler = engine.JobScheduler(cache_file=self.config['cache'],logger=logger.get())
                 
                 #Schedule all incoming report requests
                 broker.addToScheduler = getattr(scheduler,'do')
@@ -77,10 +77,7 @@ class Server():
 
                 #Load the scheduler cache if available.
                 #scheduler.load()
-                
-                #Start scheduler (and producing eventually)
-                #scheduler.sched.start()
-                
+                                
                 #Start consuming and block
                 broker.connection.ioloop.start()
                                 
