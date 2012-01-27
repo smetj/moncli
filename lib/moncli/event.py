@@ -1,7 +1,7 @@
 #!/usr/bin/env python
 # -*- coding: utf-8 -*-
 #
-#       event2.py
+#       event.py
 #       
 #       Copyright 2012 Jelle Smet development@smetj.net
 #       

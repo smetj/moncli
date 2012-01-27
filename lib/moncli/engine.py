@@ -233,7 +233,7 @@ class JobScheduler():
             self.__unschedule(name=name, object = self.request[name][scheduler])
         if doc['request']['cycle'] == 0:
             self.logger.debug ('Executed imediately job %s'%(name))
-            job=ReportRequestExecutor2(local_repo='/opt/moncli/lib/repository',remote_repo='http://blah',logger=self.logger)
+            job=ReportRequestExecutor(local_repo='/opt/moncli/lib/repository',remote_repo='http://blah',logger=self.logger)
             job.do(doc=doc)
         else:
             self.__schedule(doc=doc)
