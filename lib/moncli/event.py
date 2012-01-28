@@ -137,12 +137,12 @@ class Request():
               "uuid":str(uuid4()),
               "message":None,
               "time":strftime("%Y-%m-%dT%H:%M:%S%z", localtime()),
-              "day_of_year":strftime("%j"),
-              "day_of_week":strftime("%w"),
-              "week_of_year":strftime("%W"),
-              "month":strftime("%m"),
-              "year":strftime("%Y"),
-              "day":strftime("%d")
+              "day_of_year":int(strftime("%j")),
+              "day_of_week":int(strftime("%w")),
+              "week_of_year":int(strftime("%W")),
+              "month":int(strftime("%m")),
+              "year":int(strftime("%Y")),
+              "day":int(strftime("%d"))
            },
            "plugin":{
               "name":doc['plugin']['name'],
