@@ -135,15 +135,14 @@ class Request():
            },
            "report":{
               "uuid":str(uuid4()),
-              "status":None,
               "message":None,
               "time":strftime("%Y-%m-%dT%H:%M:%S%z", localtime()),
               "day_of_year":strftime("%j"),
               "day_of_week":strftime("%w"),
               "week_of_year":strftime("%W"),
               "month":strftime("%m"),
-              "year":strftime("%Y")
-#             "day":"number"
+              "year":strftime("%Y"),
+              "day":strftime("%d")
            },
            "plugin":{
               "name":doc['plugin']['name'],
