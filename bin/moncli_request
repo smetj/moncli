@@ -95,8 +95,6 @@ sub FillBlancs(){
     $json->{'request'}->{'day'}) = &GetDateInfo();
     $json->{'destination'}->{'name'} = $options{host};
     $json->{'destination'}->{'subject'} = $options{subject};
-    print encode_json $json,"\n";
-    exit;
     return (encode_json $json,$json->{'request'}->{'uuid'});
 }
 sub GetDateInfo(){
@@ -151,7 +149,8 @@ check_moncli $version Copyright 2011 by Jelle Smet development\@smetj.net
 
 Description:
 
-    check_moncli is a Nagios check which facilitates the creation and communication handling of MonCli report requests.
+    moncli_request is script which creates and submits Moncli requests by using templates.
+    It could be used by different processes including monitoring frameworks such as Nagios.
     
 Usage:
 
@@ -164,7 +163,7 @@ Parameters:
     --exchange      The exchange to which report requests should be submitted.  By default this is moncli_report_requests.
     --user          The username to authenticate against RabbitMQ.
     --password      The password to authenticate against RabbitMQ.
-    --host          The hostname on which Moncli listens. This should also be the name of a Queue in RabbitMQ.
+    --host          The hostname on which Moncli listens. This should also be the name of a Queue (key) in RabbitMQ.
     --subject       The subject of the report request.
     --repository    The absolute pathname of the report request repository.
     
