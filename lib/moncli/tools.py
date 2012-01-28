@@ -101,6 +101,7 @@ class Calculator():
             else:
                 raise RuntimeError('Invalid Threshold :'+str(threshold))
         return "OK"
+
 class StatusCalculator():
     '''Contains a number of methods facilitating different kind of status calculations.'''
     def __init__(self,weight_map='default',template=None):
@@ -142,6 +143,7 @@ class StatusCalculator():
             if template[element]['name'] == name:
                 return True
         return False
+
 class PluginManager():
     '''Provides the name of the plugin to execute, verifies its hash and downloads a new plugin version if required.'''
     def __init__(self,local_repository,remote_repository):
@@ -185,6 +187,7 @@ class PluginManager():
         output.close()
         #Make executable
         os.chmod(local_repository+'/'+command+'/'+hash,0750)
+
 class Profile():
     '''Used for profiling purposes'''
     def __init__(self):
@@ -198,6 +201,7 @@ class Profile():
                         yappi.SHOW_ALL):
             self.yappi_results.write(line+"\n")
             print line
+
 def logger(file,scrlog=True,txtlog=True,loglevel=logging.DEBUG):
         format=('%(asctime)s %(levelname)s %(name)s %(message)s')
         logging.basicConfig(level=loglevel,format=format)

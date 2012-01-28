@@ -30,7 +30,7 @@ import logging
 
 class Request():
     def __init__(self,doc):
-        self.logging = logger = logging.getLogger(__name__)
+        self.logging = logging.getLogger(__name__)
         self.calc = Calculator()
         self.__load(doc)
         self.answer = self.__initReport(doc)
