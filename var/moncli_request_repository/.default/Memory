@@ -1,0 +1,41 @@
+{
+   "plugin":{
+      "name":"memory",
+      "hash":"f4f2b50762bf835ce86b16a1576a4e70",
+      "timeout":60,
+      "parameters":""
+   },
+   "report":{
+       "message":"Physical #physical % * Actual #actual % * Swap #swap %"
+   },
+   "request":{
+       "cycle":60
+   },
+   "evaluators":{
+      "actual":{
+         "evaluator":"fm:100-(((memfree+buffers+cached)/memtotal)*100)",
+         "metric":"%",
+         "thresholds":{
+            "critical":"@90:100",
+            "warning":"@80:90"
+         }
+      },
+      "swap":{
+         "evaluator":"fm:100-((swapfree/swaptotal)*100)",
+         "metric":"%",
+         "thresholds":{
+            "critical":"@30:100",
+            "warning":"@20:30"
+         }
+      },
+      "physical":{
+         "evaluator":"fm:100-((memfree/memtotal)*100)",
+         "metric":"%",
+         "thresholds":{
+            "critical":"@95:100",
+            "warning":"@90:95"
+         }
+      }
+   },
+   "tags":[]
+}
