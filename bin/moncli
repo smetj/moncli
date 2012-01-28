@@ -125,7 +125,7 @@ class Server():
                 time.sleep(1)
 
 if __name__ == '__main__':
-    #try:
+    try:
         #Parse command line options
         parser = OptionParser()
         parser.add_option("--broker", dest="broker", default="127.0.0.1", type="string", help="IPaddress or hostname of the broker to connect to.  Default is localhost.")

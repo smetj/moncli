@@ -49,7 +49,7 @@ simplefilter("ignore", "user")
 class MoncliCommands():
     def __init__(self, scheduler_methods):
         self.scheduler_methods = scheduler_methods
-        self.logging logging.getLogger(__name__)
+        self.logging=logging.getLogger(__name__)
 
     def execute(self, command):
         if command == {'system': 'shutdown'}:
