@@ -255,7 +255,7 @@ class JobScheduler():
     def __schedule(self,doc):
         name = self.__name(doc)
         self.logger.debug ('Scheduled job %s'%(name))
-        random_wait = randint(1,int(6))
+        random_wait = randint(1,int(60))
         self.__register(doc)
         self.request[name][scheduler]=self.sched.add_interval_job( self.request[name]['function'].do,
                                                         seconds=int(doc['request']['cycle']),

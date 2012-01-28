@@ -62,7 +62,7 @@ class Server():
         broker = None
         scheduler = None        
         while self.block() == True:
-            #try:
+            try:
                 #Initialize Broker
                 broker = engine.Broker(host = self.config['broker'],logger=logger)
                 
@@ -74,33 +74,32 @@ class Server():
                 
                 #Send reports back to broker
                 scheduler.submitBroker = getattr(broker,'submitReport')
-                scheduler.load()
 
                 #Load the scheduler cache if available.
-                #scheduler.load()
+                scheduler.load()
                                 
                 #Start consuming and block
                 broker.connection.ioloop.start()
                                 
-            #except KeyboardInterrupt:
+            except KeyboardInterrupt:
                 #scheduler.shutdown()
-                #self.thread_block=False
-                #broker.connection.close()
-                #broker.connection.ioloop.start()
-                #os.remove(self.config['pid'])
-                #sys.exit
-            #except Exception as err:
-                #if broker != None:
-                    #broker.connection.close()
-                    #broker.connection.ioloop.start()
-                    #del(broker)
-                #if scheduler !=None:
-                    #scheduler.shutdown()
-                    #del(scheduler)              
-                #local_log.warn("Broker connection failed, restarting")
-                #time.sleep(1)
+                self.thread_block=False
+                broker.connection.close()
+                broker.connection.ioloop.start()
+                os.remove(self.config['pid'])
+                sys.exit
+            except Exception as err:
+                if broker != None:
+                    broker.connection.close()
+                    broker.connection.ioloop.start()
+                    del(broker)
+                if scheduler !=None:
+                    scheduler.shutdown()
+                    del(scheduler)              
+                local_log.warn("Broker connection failed, restarting")
+                time.sleep(1)
 if __name__ == '__main__':
-#    try:
+    try:
         #Parse command line options
         parser = OptionParser()
         parser.add_option("--broker", dest="broker", default="127.0.0.1", type="string", help="IPaddress or hostname of the broker to connect to.  Default is localhost.")
@@ -149,15 +148,15 @@ if __name__ == '__main__':
             help()
             print ('Unknown option %s \n' %(cli_actions[0]))
             sys.exit()
- #   except Exception as err:
-  #      sys.stderr.write('A fatal error has occurred.\n')
-   #     sys.stderr.write('Please file a bug report to https://github.com/smetj/Moncli/issues including:\n')
-    #    sys.stderr.write('\t - Moncli version.\n')
-     #   sys.stderr.write('\t - Startup parameters.\n')
-#        sys.stderr.write('\t - A copy of your moncli.cache file.\n')
-#        sys.stderr.write('\t - Your OS and version.\n')
- #       sys.stderr.write('\t - Your Python version.\n')
-  #      sys.stderr.write('\t - The steps to take to reproduce this error.\n')
-   #     sys.stderr.write('\t - This piece of information: '+ str(type(err))+" "+str(err) + "\n" )
+    except Exception as err:
+        sys.stderr.write('A fatal error has occurred.\n')
+        sys.stderr.write('Please file a bug report to https://github.com/smetj/Moncli/issues including:\n')
+        sys.stderr.write('\t - Moncli version.\n')
+        sys.stderr.write('\t - Startup parameters.\n')
+        sys.stderr.write('\t - A copy of your moncli.cache file.\n')
+        sys.stderr.write('\t - Your OS and version.\n')
+        sys.stderr.write('\t - Your Python version.\n')
+        sys.stderr.write('\t - The steps to take to reproduce this error.\n')
+        sys.stderr.write('\t - This piece of information: '+ str(type(err))+" "+str(err) + "\n" )
         #sys.stderr.write(str(traceback.print_exc()))
-    #    sys.exit(1)
+        sys.exit(1)
