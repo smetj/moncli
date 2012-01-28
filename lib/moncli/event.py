@@ -45,56 +45,63 @@ class Request():
             "properties" : {
                 "source" : {
                     "type" : "object",
+                    "required" : True,
                     "additionalProperties": False,
                     "properties" : {
-                        "name" : {"type" : "string" }
+                        "name" : {"type" : "string", "required" : True }
                     }
                 },
                 "destination" : {
                     "type" : "object",
+                    "required" : True,
                     "additionalProperties": False,
                     "properties" : {
-                        "name" : {"type" : "string" },
-                        "subject" : {"type" : "string" }
+                        "name" : {"type" : "string", "required" : True },
+                        "subject" : {"type" : "string", "required" : True }
                     }
                 },
                 "report" : {
                     "type" : "object",
+                    "required" : True,                    
                     "additionalProperties": False,
                     "properties" : {
-                        "message" : {"type" : "string" },
+                        "message" : {"type" : "string", "required" : True },
                     }
                 },
                 "request" : {
                     "type" : "object",
+                    "required" : True,                    
                     "additionalProperties": False,
                     "properties" : {
-                        "uuid" : {"type" : "string" },
-                        "time" : {"type" : "string" },
-                        "day_of_year" : {"type" : "number" },
-                        "day_of_week" : {"type" : "number" },
-                        "week_of_year" : {"type" : "number" },
-                        "month" : {"type" : "number" },
-                        "year" : {"type" : "number" },
-                        "day" : {"type" : "number" },
-                        "cycle" : {"type" : "number" },
+                        "uuid" : {"type" : "string", "required" : True },
+                        "time" : {"type" : "string", "required" : True },
+                        "day_of_year" : {"type" : "number", "required" : True },
+                        "day_of_week" : {"type" : "number", "required" : True },
+                        "week_of_year" : {"type" : "number", "required" : True },
+                        "month" : {"type" : "number", "required" : True },
+                        "year" : {"type" : "number", "required" : True },
+                        "day" : {"type" : "number", "required" : True },
+                        "cycle" : {"type" : "number", "required" : True },
                     }
                 },
                 "plugin" : {
                     "type" : "object",
+                    "required" : True,                    
                     "additionalProperties": False,
                     "properties" : {
-                        "name" : {"type" : "string" },
-                        "hash" : {"type" : "string" },
-                        "timeout" : {"type" : "number" },
-                        "parameters" : {"type" : "string" }
+                        "name" : {"type" : "string", "required" : True },
+                        "hash" : {"type" : "string", "required" : True },
+                        "timeout" : {"type" : "number", "required" : True },
+                        "parameters" : {"type" : "string", "required" : True }
                     }
                 },
                 "evaluators" : {
-                    "type" : "object"
+                    "type" : "object",
+                    "required" : True
                 },
                 "tags" : {
                     "type" : "array",
+                    "required" : True
                 }
             }
         }
@@ -102,9 +109,9 @@ class Request():
             "type" : "object",
             "additionalProperties": False,
             "properties" : {
-                "evaluator" : {"type" : "string" },
-                "metric" : {"type" : "string" },
-                "thresholds" : {"type" : "object" }
+                "evaluator" : {"type" : "string", "required" : True },
+                "metric" : {"type" : "string", "required" : True },
+                "thresholds" : {"type" : "object", "required" : True }
             }
         }
         threshold_schema = {
@@ -136,7 +143,7 @@ class Request():
               "week_of_year":strftime("%W"),
               "month":strftime("%m"),
               "year":strftime("%Y")
-#              "day":"number"
+#             "day":"number"
            },
            "plugin":{
               "name":doc['plugin']['name'],

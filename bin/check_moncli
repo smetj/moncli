@@ -26,6 +26,7 @@ use warnings;
 use Getopt::Long;
 use Net::RabbitMQ;
 use Sys::Hostname::FQDN qw(fqdn);
+use POSIX qw(strftime);
 use Data::UUID;
 use JSON;
 use Data::Dumper;
@@ -87,12 +88,36 @@ sub FillBlancs(){
 	my $json = decode_json $doc;
 	my $ug = new Data::UUID;
 	my $uuid = $ug->create();
-	$json->{'FQDN'} = fqdn();
-	$json->{'UUID'} = $ug->to_string($uuid);
-	$json->{'time'} = time();
-	$json->{'timezone'} = "CET";
-	$json->{'target'} = $options{host};
-	return (encode_json $json,$json->{'UUID'});
+	$json->{'source'}->{'name'} = fqdn();
+	$json->{'request'}->{'uuid'} = $ug->to_string($uuid);
+    ($json->{'request'}->{'time'},
+    $json->{'request'}->{'week_of_year'},
+    $json->{'request'}->{'year'},
+    $json->{'request'}->{'day_of_year'},
+    $json->{'request'}->{'day_of_week'},
+    $json->{'request'}->{'month'},
+    $json->{'request'}->{'day'}) = &GetDateInfo();
+	$json->{'destination'}->{'name'} = $options{host};
+	$json->{'destination'}->{'subject'} = $options{service};
+    print encode_json $json,"\n";
+    exit;
+	return (encode_json $json,$json->{'request'}->{'uuid'});
+}
+sub GetDateInfo(){
+    my $now = time();
+    
+    #Get ISO date
+    my $tz = strftime("%z", localtime($now));
+    $tz =~ s/(\d{2})(\d{2})/$1:$2/;
+    my $iso_date = strftime("%Y-%m-%dT%H:%M:%S", localtime($now)) . $tz;
+
+    my $week_of_year = strftime "%W", localtime($now);
+    my $year = strftime "%Y", localtime($now);
+    my $day_of_year = strftime "%j", localtime($now);
+    my $day_of_week = strftime "%u", localtime($now);
+    my $month = strftime "%m", localtime($now);
+    my $day = strftime "%d", localtime($now);
+    return ($iso_date, int($week_of_year), int($year), int($day_of_year), int($day_of_week), int($month), int($day));
 }
 sub GetDoc(){
 	my $repo=shift;

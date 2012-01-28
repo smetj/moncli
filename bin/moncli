@@ -36,7 +36,6 @@ class Server():
         self.config = config
         self.thread_block = True
 
-
     def initLogging(self,debug):
         if debug == True:
             tools.logger()
