@@ -35,7 +35,7 @@ from subprocess import Popen,PIPE
 from tools import PluginManager
 from tools import Calculator
 from tools import StatusCalculator
-from moncli.event2 import Request
+from moncli.event import Request
 import pika
 import pickle
 import json
@@ -118,7 +118,6 @@ class Broker():
                         )
         self.lock.release()
     def submitReport(self,data):
-        print data
         self.lock.acquire()
         self.logger.debug('Submitting a Report to moncli_reports')
         self.channel.basic_publish( exchange='moncli_reports', 
@@ -222,11 +221,11 @@ class JobScheduler():
     def __init__(self,cache_file,logger):
         self.logger=logger
         self.sched=scheduler.Scheduler()
-        self.submitBroker=None
-        self.sched.start()
+        self.submitBroker=None        
         self.request={}        
         self.cache_file=cache_file
         self.do_lock=Lock()
+        self.sched.start()
     def do(self,doc):
         self.do_lock.acquire()
         name = self.__name(doc)
@@ -256,7 +255,7 @@ class JobScheduler():
     def __schedule(self,doc):
         name = self.__name(doc)
         self.logger.debug ('Scheduled job %s'%(name))
-        random_wait = randint(1,int(60))
+        random_wait = randint(1,int(6))
         self.__register(doc)
         self.request[name][scheduler]=self.sched.add_interval_job( self.request[name]['function'].do,
                                                         seconds=int(doc['request']['cycle']),
@@ -268,13 +267,24 @@ class JobScheduler():
     def __save(self):
         try:
             output=open(self.cache_file,'wb')
+            cache=[]
             for doc in self.request:
-                pickle.dump(self.request[doc]['document'],output)
+                cache.append(self.request[doc]['document'])
+            pickle.dump(cache,output)
             output.close()
             self.logger.info('Job scheduler: Moncli cache file saved.')
         except Exception as err:
             self.logger.warn('Job scheduler: Moncli cache file could not be saved. Reason: %s.'%(err))
-        
+    def load(self):
+        try:             
+            input=open(self.cache_file,'r')
+            jobs=pickle.load(input)
+            input.close()
+            for job in jobs:
+                self.__schedule(doc=job)
+            self.logger.info('Job scheduler: Loaded cache file.')
+        except Exception as err:
+            self.logger.info('Job scheduler: I could not open cache file: Reason: %s.'%(err))            
 class ReportRequestExecutor():
     def __init__(self,local_repo, remote_repo,submitBroker,logger):
         self.pluginManager = PluginManager( local_repository = local_repo,

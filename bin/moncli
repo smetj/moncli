@@ -74,6 +74,7 @@ class Server():
                 
                 #Send reports back to broker
                 scheduler.submitBroker = getattr(broker,'submitReport')
+                scheduler.load()
 
                 #Load the scheduler cache if available.
                 #scheduler.load()
