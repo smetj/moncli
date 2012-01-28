@@ -1,0 +1,183 @@
+#!/usr/bin/env perl
+# -*- coding: utf-8 -*-
+#
+#       moncli_request
+#       
+#       Copyright 2011 Jelle <development@smetj.net>
+#       
+#       This program is free software; you can redistribute it and/or modify
+#       it under the terms of the GNU General Public License as published by
+#       the Free Software Foundation; either version 3 of the License, or
+#       (at your option) any later version.
+#       
+#       This program is distributed in the hope that it will be useful,
+#       but WITHOUT ANY WARRANTY; without even the implied warranty of
+#       MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
+#       GNU General Public License for more details.
+#       
+#       You should have received a copy of the GNU General Public License
+#       along with this program; if not, write to the Free Software
+#       Foundation, Inc., 51 Franklin Street, Fifth Floor, Boston,
+#       MA 02110-1301, USA.
+#       
+#       
+use strict;
+use warnings;
+use Getopt::Long;
+use Net::RabbitMQ;
+use Sys::Hostname::FQDN qw(fqdn);
+use POSIX qw(strftime);
+use Data::UUID;
+use JSON;
+use Data::Dumper;
+my $version ='0.1';
+
+#Set default values
+my %options =   ("subject" => '',
+                "host" => '',
+                "broker" => 'localhost',
+                "exchange" => 'moncli_report_requests',
+                "user" => 'guest',
+                "password" => 'guest',
+                "repository" => '');
+
+GetOptions ("subject=s" => \$options{subject},
+            "host=s" => \$options{host},
+            "broker=s" => \$options{broker},
+            "exchange=s" => \$options{exchange},
+            "user=s" => \$options{user},
+            "password=s" => \$options{password},
+            "repository=s" => \$options{repository},
+            "help" => \$options{help},
+            "h" => \$options{help});
+
+if ( defined $options{help} || defined $options{h} ){
+    &Help();
+    exit(0);
+}
+
+if ( $options{subject} eq '' || $options{host} eq '' || $options{repository} eq '' ){
+    &Help();
+    print "Either subject, host or repository is missing.\n";
+    exit(3);
+}
+
+my $doc = &GetDoc(  $options{repository},
+            $options{host},
+            $options{subject},
+            );
+my ($document,$uuid) = &FillBlancs($doc);
+print &SubmitBroker($document,$uuid);
+
+sub SubmitBroker(){
+    my $document=shift;
+    my $uuid=shift;
+    my $mq = Net::RabbitMQ->new();
+    $mq->connect($options{broker}, { user => $options{user}, password => $options{password} });
+    $mq->channel_open(1);
+    $mq->publish(1, $options{host},$document);
+    $mq->disconnect();
+    return sprintf ( "A new Report Request (%s) has been submitted. Waiting for check results.\n",$uuid);
+}
+sub FillBlancs(){
+    my $doc=shift;
+    my $json = decode_json $doc;
+    my $ug = new Data::UUID;
+    my $uuid = $ug->create();
+    $json->{'source'}->{'name'} = fqdn();
+    $json->{'request'}->{'uuid'} = $ug->to_string($uuid);
+    ($json->{'request'}->{'time'},
+    $json->{'request'}->{'week_of_year'},
+    $json->{'request'}->{'year'},
+    $json->{'request'}->{'day_of_year'},
+    $json->{'request'}->{'day_of_week'},
+    $json->{'request'}->{'month'},
+    $json->{'request'}->{'day'}) = &GetDateInfo();
+    $json->{'destination'}->{'name'} = $options{host};
+    $json->{'destination'}->{'subject'} = $options{subject};
+    print encode_json $json,"\n";
+    exit;
+    return (encode_json $json,$json->{'request'}->{'uuid'});
+}
+sub GetDateInfo(){
+    my $now = time();
+    
+    #Get ISO date
+    my $tz = strftime("%z", localtime($now));
+    $tz =~ s/(\d{2})(\d{2})/$1:$2/;
+    my $iso_date = strftime("%Y-%m-%dT%H:%M:%S", localtime($now)) . $tz;
+
+    my $week_of_year = strftime "%W", localtime($now);
+    my $year = strftime "%Y", localtime($now);
+    my $day_of_year = strftime "%j", localtime($now);
+    my $day_of_week = strftime "%u", localtime($now);
+    my $month = strftime "%m", localtime($now);
+    my $day = strftime "%d", localtime($now);
+    return ($iso_date, int($week_of_year), int($year), int($day_of_year), int($day_of_week), int($month), int($day));
+}
+sub GetDoc(){
+    my $repo=shift;
+    my $host=shift;
+    my $subject=shift;
+    my @json;
+    my $file;
+    
+    if ( -e "$repo/$host/$subject" ){
+        $file = sprintf ( "%s/%s/%s",$repo,$host,$subject );
+
+    }
+    elsif ( -e "$repo/.default/$subject" ){
+        $file = sprintf ( "%s/.default/%s",$repo,$subject );
+    }
+    else{
+        $file = "";
+    }
+    if ( $file eq "" ){
+        print "No custom nor default report request found.\n";
+        exit 3;
+    }
+    
+    open FH, $file;
+    @json = <FH>;
+    close FH;
+    
+    my $json = join ( '',@json);
+    return $json;
+}
+sub Help(){
+    print <<HELP
+
+check_moncli $version Copyright 2011 by Jelle Smet development\@smetj.net
+
+Description:
+
+    check_moncli is a Nagios check which facilitates the creation and communication handling of MonCli report requests.
+    
+Usage:
+
+    moncli_request --broker host_name [--exchange name] [--user] [--password] --host host_name --subject subject --repository absolute_path
+    
+    
+Parameters:
+
+    --broker        The hostname of a RabbitMQ broker.
+    --exchange      The exchange to which report requests should be submitted.  By default this is moncli_report_requests.
+    --user          The username to authenticate against RabbitMQ.
+    --password      The password to authenticate against RabbitMQ.
+    --host          The hostname on which Moncli listens. This should also be the name of a Queue in RabbitMQ.
+    --subject       The subject of the report request.
+    --repository    The absolute pathname of the report request repository.
+    
+    
+Note:
+
+    The report request repository has following structure:
+    
+        /some/directory/.default/subjectname
+        /some/directory/host/subjectname
+        ...
+    
+    When check_moncli doesn't find a dedicated report request for the defined host and subject, it will try to find a report request
+    in the .default directory which matches the subject.
+HELP
+}
