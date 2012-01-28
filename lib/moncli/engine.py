@@ -41,12 +41,13 @@ import pickle
 import json
 import os
 import time
+import logging
 
 simplefilter("ignore", "user")
 class MoncliCommands():
-    def __init__(self,scheduler_methods,logging=None):
+    def __init__(self,scheduler_methods):
         self.scheduler_methods=scheduler_methods
-        self.logging=logging
+        self.logging = logger = logging.getLogger(__name__)
     def execute(self,command):
         if command == {'system':'shutdown'}:
             self.__shutdown('now')
@@ -78,26 +79,30 @@ class MoncliCommands():
             self.scheduler_methods.reset()   
 class Broker():
     '''Handles communication to message broker and initialises queus, exchanges and bindings if missing.'''
-    def __init__(self,host,logger):
+    def __init__(self,host):
         self.queue_name = getfqdn()
         self.subnet_bind_key = '172.16.43.0/24'
-        parameters = pika.ConnectionParameters(host)
-        self.lock=Lock()
+        self.parameters = pika.ConnectionParameters(host)
         self.properties = pika.BasicProperties(delivery_mode=2)
-        self.connection = SelectConnection(parameters,self.__on_connected)
-        self.connection.add_backpressure_callback(self.backpressure)
+        self.connection = None
         self.addToScheduler=None
-        self.logger=logger.get(name='Broker')
-        self.logger.info('Broker started')
+        self.reconnect=None
+        self.logging = logger = logging.getLogger(__name__)
+        self.logging.info('Broker started')
+        self.__start_connect()
+        self.lock=Lock()
+    def __start_connect(self):
+        self.connection = SelectConnection(self.parameters,self.__on_connected)
+        self.connection.add_backpressure_callback(self.backpressure)
     def __on_connected(self,connection):
-        self.logger.debug('Connecting to broker.')
+        self.logging.debug('Connecting to broker.')
         connection.channel(self.__on_channel_open)
     def __on_channel_open(self,new_channel):
         self.channel = new_channel
         self.__initialize()
         self.channel.basic_consume(self.processReportRequest, queue = self.queue_name)
     def __initialize(self):
-        self.logger.debug('Creating exchanges, queues and bindings on broker.')
+        self.logging.debug('Creating exchanges, queues and bindings on broker.')
         self.channel.exchange_declare(exchange='moncli_report_requests_broadcast',type='fanout',durable=True)
         self.channel.exchange_declare(exchange='moncli_report_requests_subnet',type='direct',durable=True)
         self.channel.exchange_declare(exchange='moncli_report_requests',type='direct',durable=True)
@@ -110,7 +115,7 @@ class Broker():
         self.channel.queue_bind(queue=self.queue_name, exchange='moncli_report_requests', routing_key=self.queue_name)
     def submitReportRequest(self,data):
         self.lock.acquire()
-        self.logger.debug('Submitting a ReportRequest to moncli_report_requests')
+        self.logging.debug('Submitting a ReportRequest to moncli_report_requests')
         self.channel.basic_publish( exchange='moncli_report_requests', 
                         routing_key=self.queue_name, 
                         body=json.dumps(data), 
@@ -119,7 +124,7 @@ class Broker():
         self.lock.release()
     def submitReport(self,data):
         self.lock.acquire()
-        self.logger.debug('Submitting a Report to moncli_reports')
+        self.logging.debug('Submitting a Report to moncli_reports')
         self.channel.basic_publish( exchange='moncli_reports', 
                         routing_key='', 
                         body=json.dumps(data), 
@@ -128,7 +133,7 @@ class Broker():
         self.lock.release()
     def acknowledgeTag(self,tag):
         self.lock.acquire()
-        self.logger.debug('Acknowledging Tag.')
+        self.logging.debug('Acknowledging Tag.')
         self.channel.basic_ack(delivery_tag=tag)
         self.lock.release()
     def processReportRequest(self,ch, method, properties, body):
@@ -136,16 +141,17 @@ class Broker():
             data = json.loads(body)
             Request.validate(data=data)
         except Exception as err:
-            self.logger.warn('Garbage reveived from broker, purging. Reason: %s'%(err))
+            self.logging.warn('Garbage reveived from broker, purging. Reason: %s'%(err))
             self.acknowledgeTag(tag=method.delivery_tag)
         else:
             self.addToScheduler(data)
             self.acknowledgeTag(tag=method.delivery_tag)
     def backpressure(self):
-        self.logger.debug('Backpressure detected.')
+        self.logging.debug('Backpressure detected.')
 class PluginExecute():
     '''Verifies and executes a plugin and keeps track of its cache'''
     def __init__(self,caching=False):
+        self.logging = logger = logging.getLogger(__name__)
         self.output=None
         self.verbose=None
         self.dictionary=None
@@ -212,14 +218,14 @@ class PluginExecute():
 class BuildMessage():
     '''Builds human readable summary messages by replacing variables in request.message with their value.'''
     def __init__(self):
-        pass
+        self.logging = logger = logging.getLogger(__name__)
     def generate(self,evaluators,message):
         for evaluator in evaluators:
             message=message.replace('#'+str(evaluator),'(%s) %s'%(evaluators[evaluator]['status'],evaluators[evaluator]['value']))
         return message
 class JobScheduler():
-    def __init__(self,cache_file,logger):
-        self.logger=logger
+    def __init__(self,cache_file):
+        self.logging = logger = logging.getLogger(__name__)
         self.sched=scheduler.Scheduler()
         self.submitBroker=None        
         self.request={}        
@@ -232,29 +238,28 @@ class JobScheduler():
         if self.request.has_key(name):
             self.__unschedule(name=name, object = self.request[name][scheduler])
         if doc['request']['cycle'] == 0:
-            self.logger.debug ('Executed imediately job %s'%(name))
-            job=ReportRequestExecutor(local_repo='/opt/moncli/lib/repository',remote_repo='http://blah',logger=self.logger)
+            self.logging.debug ('Executed imediately job %s'%(name))
+            job=ReportRequestExecutor(local_repo='/opt/moncli/lib/repository',remote_repo='http://blah')
             job.do(doc=doc)
         else:
             self.__schedule(doc=doc)
         self.__save()
         self.do_lock.release()
     def __unschedule(self,name,object):
-        self.logger.debug ('Unscheduled job %s'%(name))
+        self.logging.debug ('Unscheduled job %s'%(name))
         self.sched.unschedule_job(object)
         del self.request[name]        
     def __register(self,doc):
         name = self.__name(doc)
-        self.logger.debug ('Registered job %s'%(name))
+        self.logging.debug ('Registered job %s'%(name))
         self.request[name]={ 'function' : None, 'scheduler': None, 'document': None }
         self.request[name]['document']=doc
         self.request[name]['function']=ReportRequestExecutor(local_repo='/opt/moncli/lib/repository',
                                                     remote_repo='http://blah',
-                                                    submitBroker=self.submitBroker,
-                                                    logger=self.logger)        
+                                                    submitBroker=self.submitBroker)
     def __schedule(self,doc):
         name = self.__name(doc)
-        self.logger.debug ('Scheduled job %s'%(name))
+        self.logging.debug ('Scheduled job %s'%(name))
         random_wait = randint(1,int(60))
         self.__register(doc)
         self.request[name][scheduler]=self.sched.add_interval_job( self.request[name]['function'].do,
@@ -272,9 +277,9 @@ class JobScheduler():
                 cache.append(self.request[doc]['document'])
             pickle.dump(cache,output)
             output.close()
-            self.logger.info('Job scheduler: Moncli cache file saved.')
+            self.logging.info('Job scheduler: Moncli cache file saved.')
         except Exception as err:
-            self.logger.warn('Job scheduler: Moncli cache file could not be saved. Reason: %s.'%(err))
+            self.logging.warn('Job scheduler: Moncli cache file could not be saved. Reason: %s.'%(err))
     def load(self):
         try:             
             input=open(self.cache_file,'r')
@@ -282,21 +287,23 @@ class JobScheduler():
             input.close()
             for job in jobs:
                 self.__schedule(doc=job)
-            self.logger.info('Job scheduler: Loaded cache file.')
+            self.logging.info('Job scheduler: Loaded cache file.')
         except Exception as err:
-            self.logger.info('Job scheduler: I could not open cache file: Reason: %s.'%(err))            
+            self.logging.info('Job scheduler: I could not open cache file: Reason: %s.'%(err))
+    def shutdown(self):
+        self.sched.shutdown()
 class ReportRequestExecutor():
-    def __init__(self,local_repo, remote_repo,submitBroker,logger):
+    def __init__(self,local_repo, remote_repo,submitBroker):
+        self.logging = logger = logging.getLogger(__name__)
         self.pluginManager = PluginManager( local_repository = local_repo,
                                 remote_repository = remote_repo,
                                 logger = logger)
         self.pluginExecute=PluginExecute(caching=True)
         self.calculator = Calculator()
         self.submitBroker=submitBroker
-        self.logger = logger
     def do(self,doc):
         request = Request(doc=doc)
-        self.logger.info('Executing a request with destination %s:%s'%(doc['destination']['name'],doc['destination']['subject']))
+        self.logging.info('Executing a request with destination %s:%s'%(doc['destination']['name'],doc['destination']['subject']))
         
         #Get plugin to execute
         command = self.pluginManager.getExecutable(command=request.plugin['name'],hash=request.plugin['hash'])

@@ -144,10 +144,9 @@ class StatusCalculator():
         return False
 class PluginManager():
     '''Provides the name of the plugin to execute, verifies its hash and downloads a new plugin version if required.'''
-    def __init__(self,local_repository,remote_repository,logger):
+    def __init__(self,local_repository,remote_repository):
         self.local_repository=local_repository
         self.remote_repository=remote_repository
-        self.logger=logging
         if self.local_repository[-1] != '/':
             self.local_repository += '/'
         if self.remote_repository != None and self.remote_repository[-1] != '/':
@@ -186,26 +185,6 @@ class PluginManager():
         output.close()
         #Make executable
         os.chmod(local_repository+'/'+command+'/'+hash,0750)
-class Logger():
-    '''Creates a logger class.'''
-    def __init__(self,file,scrlog=True,txtlog=True,loglevel=logging.DEBUG):
-        self.loglevel=loglevel
-        self.format=logging.Formatter('%(asctime)s %(levelname)s::%(processName)s:%(message)s')
-        self.file=file
-        self.scrlog=scrlog
-        self.txtlog=txtlog
-    def get(self,name=None):
-        log = logging.getLogger(name=name)
-        log.setLevel(self.loglevel)
-        if self.txtlog == True:
-            txt_handler = logging.FileHandler( self.file )
-            txt_handler.setFormatter(self.format)
-            log.addHandler(txt_handler)
-        if self.scrlog == True:
-            scr_handler = logging.StreamHandler()
-            scr_handler.setFormatter(self.format)
-            log.addHandler(scr_handler)
-        return log
 class Profile():
     '''Used for profiling purposes'''
     def __init__(self):
@@ -219,3 +198,16 @@ class Profile():
                         yappi.SHOW_ALL):
             self.yappi_results.write(line+"\n")
             print line
+def logger(file,scrlog=True,txtlog=True,loglevel=logging.DEBUG):
+        format=('%(asctime)s %(levelname)s %(name)s %(message)s')
+        logging.basicConfig(level=loglevel,format=format)
+        
+        #if txtlog == True:
+            #txt_handler = logging.FileHandler( file )
+            #txt_handler.setFormatter(format)
+            #logging.Logger.addHandler(txt_handler)
+        #if scrlog == True:
+            #scr_handler = logging.StreamHandler()
+            #scr_handler.setFormatter(format)
+            #logging.Logger.addHandler(scr_handler)
+        
