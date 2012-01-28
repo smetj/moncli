@@ -333,8 +333,7 @@ class ReportRequestExecutor():
     def __init__(self, local_repo, remote_repo, submitBroker):
         self.logging = logging.getLogger(__name__)
         self.pluginManager = PluginManager(local_repository=local_repo,
-                                remote_repository=remote_repo,
-                                logger=logger)
+                                remote_repository=remote_repo)
         self.pluginExecute = PluginExecute(caching=True)
         self.calculator = Calculator()
         self.submitBroker = submitBroker

@@ -31,6 +31,7 @@ import re
 
 class Calculator():
     def __init__(self):
+        self.logging = logging.getLogger(__name__)
         self.whitelist=[ '+','-','/','*','^','(',')','.',' ' ]
     def do(self,output,dictionary,evaluator,thresholds):
         if evaluator[:3] == 're:':
@@ -105,6 +106,7 @@ class Calculator():
 class StatusCalculator():
     '''Contains a number of methods facilitating different kind of status calculations.'''
     def __init__(self,weight_map='default',template=None):
+        self.logging = logging.getLogger(__name__)
         if weight_map == 'nagios:service':
             self.template=self.__setNagiosService()
         elif weight_map == 'nagios:host':
@@ -147,13 +149,14 @@ class StatusCalculator():
 class PluginManager():
     '''Provides the name of the plugin to execute, verifies its hash and downloads a new plugin version if required.'''
     def __init__(self,local_repository,remote_repository):
+        self.logging = logging.getLogger(__name__)
         self.local_repository=local_repository
         self.remote_repository=remote_repository
         if self.local_repository[-1] != '/':
             self.local_repository += '/'
         if self.remote_repository != None and self.remote_repository[-1] != '/':
             self.remote_repository += '/'
-        self.logger.debug('PluginManager Initiated')
+        self.logging.debug('PluginManager Initiated')
     def getExecutable(self,command,hash=None):
         if not os.path.exists(self.local_repository+command):
             self.__createCommand(dir=self.local_repository+command)         
@@ -168,17 +171,17 @@ class PluginManager():
         plugin.close()
         if file != plugin_hash.hexdigest():
             raise Exception ( 'Plugin filename does not match its hash value.' )
-            self.logger.warning ( 'Plugin filename %s does not match its hash value %s.'%(file,plugin_hash.hexdigest() ) )
+            self.logging.warning ( 'Plugin filename %s does not match its hash value %s.'%(file,plugin_hash.hexdigest() ) )
         return True 
     def __createCommand(self,dir):
         os.mkdir(dir)
     def __downloadVersion(self,remote_repository,local_repository,command,hash):
         full_url = "%s%s(%s)/%s/%s"%(remote_repository,system(),machine(),command,hash)
-        self.logger.info ('Downloading update %s.'%(full_url))
+        self.logging.info ('Downloading update %s.'%(full_url))
         try:
             response = urlopen(full_url)
         except Exception as err:
-            self.logger.critical ( 'Error downloading update. Reason: %s'%(str(err) + " - "+full_url) )
+            self.logging.critical ( 'Error downloading update. Reason: %s'%(str(err) + " - "+full_url) )
             raise Exception (str(err) + " - "+full_url )
             
         output = open ( local_repository+'/'+command+'/'+hash, 'w' )

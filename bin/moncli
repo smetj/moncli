@@ -88,7 +88,7 @@ class Server():
         broker = None
         scheduler = None
         while self.block() == True:
-            try:
+            #try:
                 #Initialize Broker
                 broker = engine.Broker(host=self.config['broker'])
 
@@ -107,22 +107,22 @@ class Server():
                 #Start consuming and block
                 broker.connection.ioloop.start()
 
-            except KeyboardInterrupt:
-                scheduler.shutdown()
-                self.thread_block = False
-                broker.connection.close()
-                broker.connection.ioloop.start()
-                scheduler.shutdown()
-                os.remove(self.config['pid'])
-                sys.exit
-            except:
-                if broker.connection.is_open == True:
-                    broker.connection.close()
-                    broker.connection.ioloop.start()
-                if scheduler != None:
-                    scheduler.shutdown()
-                self.logging.warn("Broker connection failed, restarting")
-                time.sleep(1)
+            #except KeyboardInterrupt:
+                #scheduler.shutdown()
+                #self.thread_block = False
+                #broker.connection.close()
+                #broker.connection.ioloop.start()
+                #scheduler.shutdown()
+                #os.remove(self.config['pid'])
+                #sys.exit
+            #except:
+                #if broker.connection.is_open == True:
+                    #broker.connection.close()
+                    #broker.connection.ioloop.start()
+                #if scheduler != None:
+                    #scheduler.shutdown()
+                #self.logging.warn("Broker connection failed, restarting")
+                #time.sleep(1)
 
 if __name__ == '__main__':
     try:
