@@ -1,8 +1,11 @@
+<pre>
  _____         _____ _ _ 
 |     |___ ___|     | |_|
 | | | | . |   |   --| | |
 |_|_|_|___|_|_|_____|_|_|
                          
+</pre>
+
 Moncli is a generic MONitoring CLIent which executes and processes requests on an external system in order to interact with 
 the host's local information sources which are normally not available over the network.
 Once Moncli has executed and evaluated the request it submits the check results back into the message broker infrastructure, 
