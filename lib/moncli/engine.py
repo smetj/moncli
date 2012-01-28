@@ -250,12 +250,14 @@ class BuildMessage():
 
 class JobScheduler():
 
-    def __init__(self, cache_file):
+    def __init__(self, cache_file, local_repo, remote_repo):
         self.logging = logging.getLogger(__name__)
         self.sched = scheduler.Scheduler()
         self.submitBroker = None
         self.request = {}
         self.cache_file = cache_file
+        self.local_repo=local_repo
+        self.remote_repo=remote_repo
         self.do_lock = Lock()
         self.sched.start()
 
@@ -266,7 +268,7 @@ class JobScheduler():
             self.__unschedule(name=name, object=self.request[name][scheduler])
         if doc['request']['cycle'] == 0:
             self.logging.debug('Executed imediately job %s' % (name))
-            job = ReportRequestExecutor(local_repo='/opt/moncli/lib/repository', remote_repo='http://blah')
+            job = ReportRequestExecutor(local_repo=self.local_repo, remote_repo=self.remote_repo)
             job.do(doc=doc)
         else:
             self.__schedule(doc=doc)

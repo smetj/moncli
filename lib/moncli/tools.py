@@ -205,16 +205,10 @@ class Profile():
             self.yappi_results.write(line+"\n")
             print line
 
-def logger(file,scrlog=True,txtlog=True,loglevel=logging.DEBUG):
+def logger(file=None,loglevel=logging.DEBUG):
         format=('%(asctime)s %(levelname)s %(name)s %(message)s')
-        logging.basicConfig(level=loglevel,format=format)
-        
-        #if txtlog == True:
-            #txt_handler = logging.FileHandler( file )
-            #txt_handler.setFormatter(format)
-            #logging.Logger.addHandler(txt_handler)
-        #if scrlog == True:
-            #scr_handler = logging.StreamHandler()
-            #scr_handler.setFormatter(format)
-            #logging.Logger.addHandler(scr_handler)
-        
+        if file == None:
+            logging.basicConfig(level=loglevel, format=format)
+        else:
+            print file
+            logging.basicConfig(filename=file, level=loglevel, format=format)
