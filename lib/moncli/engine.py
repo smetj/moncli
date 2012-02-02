@@ -28,20 +28,23 @@ from pika.adapters import SelectConnection
 from socket import getfqdn
 from moncli import event
 from threading import Lock
-from multiprocessing import Manager
 from random import randint
 from datetime import datetime, timedelta
-from subprocess import Popen, PIPE
+from subprocess import Popen, STDOUT, PIPE
 from tools import PluginManager
 from tools import Calculator
 from tools import StatusCalculator
 from moncli.event import Request
+from signal import SIGKILL
+import threading
 import pika
 import pickle
 import json
 import os
 import time
 import logging
+
+
 
 simplefilter("ignore", "user")
 
@@ -166,76 +169,6 @@ class Broker():
         self.logging.debug('Backpressure detected.')
 
 
-class PluginExecute():
-    '''Verifies and executes a plugin and keeps track of its cache'''
-
-    def __init__(self, caching=False):
-        self.logging = logging.getLogger(__name__)
-        self.output = None
-        self.verbose = None
-        self.dictionary = None
-        self.caching = caching
-        self.cache = Manager().dict()
-
-    def do(self, command=None, parameters=None, hash=None, timeout=30):
-        normal_output = []
-        error_output = []
-        errors = None
-
-        if parameters == None or parameters == '':
-            command = command
-        else:
-            command = "%s %s" % (command, parameters)
-        shell = Popen(command, shell=True, bufsize=0, stdin=PIPE, stdout=PIPE, stderr=PIPE, close_fds=True)
-        (child_stdin, child_stdout, child_stderr) = (shell.stdin, shell.stdout, shell.stderr)
-        start = time.time()
-        endtime = int(start) + int(timeout)
-        while (shell.poll() == None) and (time.time() < endtime):
-            time.sleep(0.5)
-        if (shell.poll() == None):
-            shell.kill()
-            raise RuntimeError("The plugin was killed after running for %s seconds" % (timeout))
-        else:
-            totaltime = time.time() - start
-            for line in child_stdout:
-                normal_output.append(line.rstrip('\n'))
-            for line in child_stderr:
-                error_output.append(line.rstrip('\n'))
-        if len(error_output) != 0:
-            raise RuntimeError("The plugin returned errors :" + '\n'.join(error_output))
-        (output, verbose, dictionary) = self.__splitOutput(data=normal_output)
-        dictionary["epoch"] = round(time.time())
-        dictionary = self.__cache(plugin=command, dictionary=dictionary)
-        return (output, verbose, dictionary)
-
-    def __splitOutput(self, data):
-        data = data
-        output = []
-        verbose = []
-        dictionary = {}
-        while len(data) != 0:
-            line = data.pop(0)
-            if str(line) == '~==.==~':
-                verbose = '\\n'.join(data)
-                break
-            else:
-                output.append(line)
-                try:
-                    key_value = line.split(":")
-                    dictionary[key_value[0]] = key_value[1]
-                except:
-                    pass
-        return (output, verbose, dictionary)
-
-    def __cache(self, plugin, dictionary):
-        current_dictionary = dictionary
-        cache_dictionary = self.cache.get(plugin, current_dictionary)
-        self.cache[plugin] = dictionary
-        for value in cache_dictionary:
-            current_dictionary['pre_' + value] = cache_dictionary[value]
-        return current_dictionary
-
-
 class BuildMessage():
     '''Builds human readable summary messages by replacing variables in request.message with their value.'''
 
@@ -331,30 +264,85 @@ class JobScheduler():
 
 
 class ReportRequestExecutor():
+    '''Don't share this class over multiple threads/processes.'''
 
     def __init__(self, local_repo, remote_repo, submitBroker):
         self.logging = logging.getLogger(__name__)
         self.pluginManager = PluginManager(local_repository=local_repo,
                                 remote_repository=remote_repo)
-        self.pluginExecute = PluginExecute(caching=True)
-        self.calculator = Calculator()
+        self.executePlugin = ExecutePlugin()
         self.submitBroker = submitBroker
+        self.cache = {}
 
     def do(self, doc):
-        request = Request(doc=doc)
-        self.logging.info('Executing a request with destination %s:%s' % (doc['destination']['name'], doc['destination']['subject']))
+        try:
+            self.logging.info('Executing a request with destination %s:%s' % (doc['destination']['name'], doc['destination']['subject']))
+            request = Request(doc=doc)
+            command = self.pluginManager.getExecutable(command=request.plugin['name'], hash=request.plugin['hash'])
+            output = self.executePlugin.do( command, request.plugin['parameters'], request.plugin['timeout'])
+            (raw, verbose, metrics) = self.processOutput(request.plugin['name'],output)
+            # metrics
+            request.insertPluginOutput(raw, verbose, metrics)            
+            self.submitBroker(request.answer)
+        except Exception as err:
+            self.logging.warning('There is a problem executing %s:%s. Reason: %s' % (doc['destination']['name'], doc['destination']['subject'], err))
+ 
+    def processOutput(self,name,data):
+        output = []
+        verbose = []
+        dictionary = {}
+        while len(data) != 0:
+            line = data.pop(0)
+            if str(line) == '~==.==~':
+                verbose = '\\n'.join(data)
+                break
+            else:
+                output.append(line)
+                try:
+                    key_value = line.split(":")
+                    dictionary[key_value[0]] = key_value[1].rstrip('\n')
+                except:
+                    pass
+        #Add epoch time
+        dictionary["epoch"] = round(time.time())
+        #Extend the metrics with the previous ones.
+        metrics = self.__cache(name, dictionary)
+        return (output, verbose, metrics)
+    
+    def __cache(self, plugin, dictionary):
+        merged_dictionary={}
+        cached_dictionary = self.cache.get(plugin, dictionary)
+        for value in cached_dictionary:
+            merged_dictionary['pre_' + value] = cached_dictionary[value]
+        merged_dictionary.update(dictionary)
+        self.cache[plugin] = dictionary
+        return merged_dictionary
 
-        #Get plugin to execute
-        command = self.pluginManager.getExecutable(command=request.plugin['name'], hash=request.plugin['hash'])
 
-        #Execute the plugin
-        (request.answer['plugin']['raw'],
-        request.answer['plugin']['verbose'],
-        request.answer['plugin']['metrics']) = self.pluginExecute.do(command=command,
-                                                    parameters=request.plugin['parameters'],
-                                                    hash=request.plugin['hash'],
-                                                    timeout=request.plugin['timeout'])
-
-        #Calculate each evaluator
-        request.calculate()
-        self.submitBroker(request.answer)
+class ExecutePlugin():
+    
+    def __init__(self):
+        self.logging = logging.getLogger(__name__)
+        self.process = None
+        
+    def do(self, command=None, parameters=[], timeout=30):
+        self.process = None
+        command = ("%s %s" % (command, ' '.join(parameters)))
+        self.output=None
+        def target():
+            self.process = Popen(command, shell=True, bufsize=0, stdout=PIPE, stderr=STDOUT, close_fds=True, preexec_fn=os.setsid)
+            self.output = self.process.stdout.readlines()
+        thread = threading.Thread(target=target)
+        thread.start()
+        thread.join(timeout)
+        
+        if thread.is_alive():
+            self.logging.warning ( 'Plugin running too long, will terminate it.' )
+            try:
+                os.killpg(self.process.pid, SIGKILL)
+            except:
+                pass
+            thread.join()
+        else:
+            return self.output
+    

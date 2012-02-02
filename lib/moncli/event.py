@@ -154,7 +154,7 @@ class Request():
            },
            "tags":doc['tags']
         }
-    def calculate(self):
+    def __calculate(self):
         for evaluator in self.evaluators:
             (value,status)  = self.calc.do(   output=self.answer['plugin']['raw'],
                                     dictionary=self.answer['plugin']['metrics'],
@@ -168,3 +168,8 @@ class Request():
         for evaluator in evaluators:
             message=message.replace('#'+str(evaluator),'(%s) %s'%(evaluators[evaluator]['status'],evaluators[evaluator]['value']))
         return message
+    def insertPluginOutput(self, raw, verbose, metrics):
+        self.answer['plugin']['raw'] = raw
+        self.answer['plugin']['verbose'] = verbose
+        self.answer['plugin']['metrics'] = metrics
+        self.__calculate()
