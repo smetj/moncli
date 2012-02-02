@@ -279,7 +279,7 @@ class ReportRequestExecutor():
             self.logging.info('Executing a request with destination %s:%s' % (doc['destination']['name'], doc['destination']['subject']))
             request = Request(doc=doc)
             command = self.pluginManager.getExecutable(command=request.plugin['name'], hash=request.plugin['hash'])
-            output = self.executePlugin.do( command, request.plugin['parameters'], request.plugin['timeout'])
+            output = self.executePlugin.do(request.plugin['name'], command, request.plugin['parameters'], request.plugin['timeout'])
             (raw, verbose, metrics) = self.processOutput(request.plugin['name'],output)
             # metrics
             request.insertPluginOutput(raw, verbose, metrics)            
@@ -325,7 +325,7 @@ class ExecutePlugin():
         self.logging = logging.getLogger(__name__)
         self.process = None
         
-    def do(self, command=None, parameters=[], timeout=30):
+    def do(self, name, command=None, parameters=[], timeout=30):
         self.process = None
         command = ("%s %s" % (command, ' '.join(parameters)))
         self.output=None
@@ -340,8 +340,8 @@ class ExecutePlugin():
             self.logging.warning ( 'Plugin running too long, will terminate it.' )
             try:
                 os.killpg(self.process.pid, SIGKILL)
-            except:
-                pass
+            except Exception as err:
+                self.logging.warning ( 'Failed to kill plugin %s. Reason: %s' % ( name, err) )
             thread.join()
         else:
             return self.output
