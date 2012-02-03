@@ -29,14 +29,18 @@ from tools import Calculator
 import logging
 
 class Request():
+
     def __init__(self,doc):
         self.logging = logging.getLogger(__name__)
         self.calc = Calculator()
         self.__load(doc)
         self.answer = self.__initReport(doc)
+
     def __load(self,doc):
         self.__dict__.update(doc)        
+
     @staticmethod
+
     def validate(data):
         checker = Validator()
         document_schema = {
@@ -122,8 +126,10 @@ class Request():
             checker.validate(data['evaluators'][evaluator],evaluator_schema)
             for threshold in data['evaluators'][evaluator]['thresholds']:
                 checker.validate(data['evaluators'][evaluator]['thresholds'][threshold],threshold_schema)
+
     def generateReport(self):
         pass
+
     def __initReport(self,doc):
         return {
            "source":{
@@ -154,6 +160,7 @@ class Request():
            },
            "tags":doc['tags']
         }
+
     def __calculate(self):
         for evaluator in self.evaluators:
             (value,status)  = self.calc.do(   output=self.answer['plugin']['raw'],
@@ -164,10 +171,12 @@ class Request():
             self.answer["evaluators"].update({ evaluator : { "status" : status, "metric" : self.evaluators[evaluator]['metric'], "value" : value } })
         
         self.answer['report']['message']=self.buildMessage(evaluators=self.answer['evaluators'],message=self.report['message'])
+
     def buildMessage(self,evaluators,message):
         for evaluator in evaluators:
             message=message.replace('#'+str(evaluator),'(%s) %s'%(evaluators[evaluator]['status'],evaluators[evaluator]['value']))
         return message
+
     def insertPluginOutput(self, raw, verbose, metrics):
         self.answer['plugin']['raw'] = raw
         self.answer['plugin']['verbose'] = verbose

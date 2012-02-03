@@ -198,7 +198,7 @@ class JobScheduler():
         self.do_lock.acquire()
         name = self.__name(doc)
         if self.request.has_key(name):
-            self.__unschedule(name=name, object=self.request[name][scheduler])
+            self.__unschedule(name=name, object=self.request[name]['scheduler'])
         if doc['request']['cycle'] == 0:
             self.logging.debug('Executed imediately job %s' % (name))
             job = ReportRequestExecutor(local_repo=self.local_repo, remote_repo=self.remote_repo)
@@ -227,7 +227,7 @@ class JobScheduler():
         self.logging.debug('Scheduled job %s' % (name))
         random_wait = randint(1, int(60))
         self.__register(doc)
-        self.request[name][scheduler] = self.sched.add_interval_job(self.request[name]['function'].do,
+        self.request[name]['scheduler'] = self.sched.add_interval_job(self.request[name]['function'].do,
                                                         seconds=int(doc['request']['cycle']),
                                                         name=name,
                                                         start_date=datetime.now() + timedelta(0, random_wait),
@@ -293,8 +293,8 @@ class ReportRequestExecutor():
         dictionary = {}
         while len(data) != 0:
             line = data.pop(0)
-            if str(line) == '~==.==~':
-                verbose = '\\n'.join(data)
+            if str(line) == '~==.==~\n':
+                verbose = "\n".join(data)
                 break
             else:
                 output.append(line)

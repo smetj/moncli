@@ -30,9 +30,11 @@ import os
 import re
 
 class Calculator():
+ 
     def __init__(self):
         self.logging = logging.getLogger(__name__)
         self.whitelist=[ '+','-','/','*','^','(',')','.',' ' ]
+ 
     def do(self,output,dictionary,evaluator,thresholds):
         if evaluator[:3] == 're:':
             value = self.__ShellExecuteegex(output=output,regex=evaluator[3:])
@@ -42,6 +44,7 @@ class Calculator():
             raise RuntimeError("The evaluator does not start with a known type: %s" %(evaluator))
         status = self.__evaluateThresholds(thresholds=thresholds,value=value)
         return (value,status)
+ 
     def __executeFormula(self,dictionary,formula):
         for key, val in dictionary.items():
             formula = re.sub('(\+|-|\/|\*|\^|\(|\)|\s|^)'+key+'(?=\+|-|\/|\*|\^|\(|\)|\s|\n|$)','\\1 '+str(val),formula)
@@ -55,6 +58,7 @@ class Calculator():
         except:
             result= None
         return result
+ 
     def __ShellExecuteegex(self,output,regex):
         matches=0
         try:
@@ -65,6 +69,7 @@ class Calculator():
             return matches
         except:
             raise RuntimeError("Error in the eveluator regex: %s -> %s" %(evaluator,evaluators[evaluator][0]))  
+ 
     def __evaluateThresholds(self,thresholds,value):
         ''' Nagios threshold definitions
             1)  10          < 0 or > 10, (outside the range of {0 .. 10})
@@ -103,8 +108,10 @@ class Calculator():
                 raise RuntimeError('Invalid Threshold :'+str(threshold))
         return "OK"
 
+
 class StatusCalculator():
     '''Contains a number of methods facilitating different kind of status calculations.'''
+
     def __init__(self,weight_map='default',template=None):
         self.logging = logging.getLogger(__name__)
         if weight_map == 'nagios:service':
@@ -114,6 +121,7 @@ class StatusCalculator():
         else:
             self.template=self.__setDefault()
         self.states=[]
+
     def result(self):
         results={}
         for state in self.states:
@@ -125,29 +133,35 @@ class StatusCalculator():
             if results.has_key(self.template[key]['name']) and results[self.template[key]['name']] >= self.template[key]['weight'] :
                 return self.template[key]['name']
         return self.template[sorted(self.template.iterkeys(),reverse=True)[0]]['name']
+
     def __setDefault(self):
         return {    0: { 'name': 'OK', 'weight': 1}, 
                     1: { 'name': 'warning', 'weight': 1},
                     2: { 'name': 'critical', 'weight': 1},
                     3: { 'name': 'unknown', 'weight': 1} }
+
     def __setNagiosService(self):
         return {    0: { 'name': 'OK', 'weight': 1}, 
                     1: { 'name': 'warning', 'weight': 1},
                     2: { 'name': 'critical', 'weight': 1},
                     3: { 'name': 'unknown', 'weight': 1} }
+
     def __setNagiosHost(self):
         return {    0: { 'name': 'OK', 'weight': 1}, 
                     1: { 'name': 'updown', 'weight': 1},
                     2: { 'name': 'down', 'weight': 1},
                     3: { 'name': 'down', 'weight': 1} }
+
     def __templateContainsName(self,name,template):
         for element in template:
             if template[element]['name'] == name:
                 return True
         return False
 
+
 class PluginManager():
     '''Provides the name of the plugin to execute, verifies its hash and downloads a new plugin version if required.'''
+    
     def __init__(self,local_repository,remote_repository):
         self.logging = logging.getLogger(__name__)
         self.local_repository=local_repository
@@ -157,6 +171,7 @@ class PluginManager():
         if self.remote_repository != None and self.remote_repository[-1] != '/':
             self.remote_repository += '/'
         self.logging.debug('PluginManager Initiated')
+
     def getExecutable(self,command,hash=None):
         if not os.path.exists(self.local_repository+command):
             self.__createCommand(dir=self.local_repository+command)         
@@ -164,6 +179,7 @@ class PluginManager():
             self.__downloadVersion(self.remote_repository,self.local_repository,command,hash)
         if self.__checkHash(fullpath=self.local_repository+'/'+command+'/'+hash,file=hash) == True:
             return self.local_repository+'/'+command+'/'+hash
+
     def __checkHash(self,fullpath,file):
         plugin = open(fullpath,'r')
         plugin_hash = md5()
@@ -173,8 +189,10 @@ class PluginManager():
             raise Exception ( 'Plugin filename does not match its hash value.' )
             self.logging.warning ( 'Plugin filename %s does not match its hash value %s.'%(file,plugin_hash.hexdigest() ) )
         return True 
+
     def __createCommand(self,dir):
         os.mkdir(dir)
+
     def __downloadVersion(self,remote_repository,local_repository,command,hash):
         full_url = "%s%s(%s)/%s/%s"%(remote_repository,system(),machine(),command,hash)
         self.logging.info ('Downloading update %s.'%(full_url))
@@ -191,19 +209,23 @@ class PluginManager():
         #Make executable
         os.chmod(local_repository+'/'+command+'/'+hash,0750)
 
+
 class Profile():
     '''Used for profiling purposes'''
+
     def __init__(self):
         import yappi
         from guppy import hpy
         yappi.start()
         self.yappi_results = open ( '/opt/moncli/var/profile.yappi','w' )
+
     def write(self):
         for line in yappi.get_stats(    yappi.SORTTYPE_TTOTAL,
                         yappi.SORTORDER_ASCENDING,
                         yappi.SHOW_ALL):
             self.yappi_results.write(line+"\n")
             print line
+
 
 def logger(file=None,loglevel=logging.DEBUG):
         format=('%(asctime)s %(levelname)s %(name)s %(message)s')
