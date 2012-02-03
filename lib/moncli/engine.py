@@ -35,7 +35,6 @@ from tools import PluginManager
 from tools import Calculator
 from tools import StatusCalculator
 from moncli.event import Request
-from signal import SIGKILL
 import threading
 import pika
 import pickle
@@ -332,17 +331,19 @@ class ExecutePlugin():
         def target():
             self.process = Popen(command, shell=True, bufsize=0, stdout=PIPE, stderr=STDOUT, close_fds=True, preexec_fn=os.setsid)
             self.output = self.process.stdout.readlines()
+            self.process.stdout.close()
         thread = threading.Thread(target=target)
         thread.start()
         thread.join(timeout)
-        
+                
         if thread.is_alive():
             self.logging.warning ( 'Plugin running too long, will terminate it.' )
             try:
-                os.killpg(self.process.pid, SIGKILL)
+                self.process.kill()
             except Exception as err:
                 self.logging.warning ( 'Failed to kill plugin %s. Reason: %s' % ( name, err) )
             thread.join()
         else:
+            self.process.wait()
             return self.output
     
