@@ -22,9 +22,9 @@
 #       
 #
 from __future__ import division
-from logging.handlers import RotatingFileHandler
 from platform import system,machine
 from hashlib import md5
+from urllib2 import urlopen
 import logging
 import os
 import re
@@ -69,7 +69,7 @@ class Calculator():
                     evaluator=matches
             return matches
         except:
-            raise RuntimeError("Error in the eveluator regex: %s -> %s" %(evaluator,evaluators[evaluator][0]))  
+            raise RuntimeError("Error in the eveluator regex: %s" %(evaluator))
  
     def __evaluateThresholds(self,thresholds,value):
         ''' Nagios threshold definitions

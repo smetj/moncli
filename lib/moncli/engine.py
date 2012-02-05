@@ -21,20 +21,17 @@
 #       MA 02110-1301, USA.
 #
 #
-from urllib2 import urlopen
+from urllib import urlretrieve
 from apscheduler import scheduler
 from warnings import simplefilter
 from pika.adapters import SelectConnection
 from socket import getfqdn
-from moncli import event
 from threading import Lock
 import Queue
 from random import randint
 from datetime import datetime, timedelta
 from subprocess import Popen, STDOUT, PIPE
 from tools import PluginManager
-from tools import Calculator
-from tools import StatusCalculator
 from moncli.event import Request
 import threading
 import pika
@@ -44,7 +41,7 @@ import os
 import time
 import logging
 import sys
-import stopwatch
+#import stopwatch
 
 
 simplefilter("ignore", "user")
@@ -282,6 +279,7 @@ class ReportRequestExecutor():
         self.executePlugin = ExecutePlugin()
         self.submitBroker = submitBroker
         self.cache = {}
+
     def do(self,doc):
         try:
             #t = stopwatch.Timer()

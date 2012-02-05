@@ -159,7 +159,6 @@ if __name__ == '__main__':
         sys.path.append(cli_options.lib)
         from moncli import engine
         from moncli import tools
-        from moncli import event
         from moncli.help import help
         server = Server(config=config)
 
