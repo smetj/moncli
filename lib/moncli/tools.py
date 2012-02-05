@@ -28,7 +28,8 @@ from hashlib import md5
 import logging
 import os
 import re
-
+import yappi
+        
 class Calculator():
  
     def __init__(self):
@@ -214,8 +215,6 @@ class Profile():
     '''Used for profiling purposes'''
 
     def __init__(self):
-        import yappi
-        from guppy import hpy
         yappi.start()
         self.yappi_results = open ( '/opt/moncli/var/profile.yappi','w' )
 

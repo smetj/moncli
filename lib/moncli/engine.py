@@ -28,6 +28,7 @@ from pika.adapters import SelectConnection
 from socket import getfqdn
 from moncli import event
 from threading import Lock
+import Queue
 from random import randint
 from datetime import datetime, timedelta
 from subprocess import Popen, STDOUT, PIPE
@@ -42,7 +43,8 @@ import json
 import os
 import time
 import logging
-
+import sys
+import stopwatch
 
 
 simplefilter("ignore", "user")
@@ -87,21 +89,31 @@ class MoncliCommands():
             self.scheduler_methods.reset()
 
 
-class Broker():
+class Broker(threading.Thread):
     '''Handles communication to message broker and initialises queus, exchanges and bindings if missing.'''
 
-    def __init__(self, host):
+    def __init__(self, host, block):
+        threading.Thread.__init__(self)
         self.queue_name = getfqdn()
         self.subnet_bind_key = '172.16.43.0/24'
+        self.block=block
         self.parameters = pika.ConnectionParameters(host)
         self.properties = pika.BasicProperties(delivery_mode=2)
         self.connection = None
         self.addToScheduler = None
         self.reconnect = None
+        self.ack_lock = Lock()
+        self.brokerq = Queue.Queue(0)
         self.logging = logging.getLogger(__name__)
         self.logging.info('Broker started')
+        self.daemon=True
+        self.start()
+    
+    def run(self):
         self.__start_connect()
-        self.lock = Lock()
+        while self.block()==True:
+            self.submitReport(self.brokerq.get(block=True))
+            time.sleep(0.5)            
 
     def __start_connect(self):
         self.connection = SelectConnection(self.parameters, self.__on_connected)
@@ -130,28 +142,25 @@ class Broker():
         self.channel.queue_bind(queue=self.queue_name, exchange='moncli_report_requests', routing_key=self.queue_name)
 
     def submitReportRequest(self, data):
-        self.lock.acquire()
         self.logging.debug('Submitting a ReportRequest to moncli_report_requests')
         self.channel.basic_publish(exchange='moncli_report_requests',
                         routing_key=self.queue_name,
                         body=json.dumps(data),
                         properties=pika.BasicProperties(delivery_mode=2))
-        self.lock.release()
 
     def submitReport(self, data):
-        self.lock.acquire()
         self.logging.debug('Submitting a Report to moncli_reports')
         self.channel.basic_publish(exchange='moncli_reports',
                         routing_key='',
                         body=json.dumps(data),
                         properties=self.properties)
-        self.lock.release()
-
+        
     def acknowledgeTag(self, tag):
-        self.lock.acquire()
+        '''Function which is shared by all scheduler jobs which allows to acknowledge requests from broker.'''
+        self.ack_lock.acquire()
         self.logging.debug('Acknowledging Tag.')
         self.channel.basic_ack(delivery_tag=tag)
-        self.lock.release()
+        self.ack_lock.release()
 
     def processReportRequest(self, ch, method, properties, body):
         try:
@@ -229,6 +238,7 @@ class JobScheduler():
         self.request[name]['scheduler'] = self.sched.add_interval_job(self.request[name]['function'].do,
                                                         seconds=int(doc['request']['cycle']),
                                                         name=name,
+                                                        coalesce=True,
                                                         start_date=datetime.now() + timedelta(0, random_wait),
                                                         kwargs={'doc': doc})
 
@@ -272,20 +282,21 @@ class ReportRequestExecutor():
         self.executePlugin = ExecutePlugin()
         self.submitBroker = submitBroker
         self.cache = {}
-
-    def do(self, doc):
+    def do(self,doc):
         try:
+            #t = stopwatch.Timer()
             self.logging.info('Executing a request with destination %s:%s' % (doc['destination']['name'], doc['destination']['subject']))
             request = Request(doc=doc)
             command = self.pluginManager.getExecutable(command=request.plugin['name'], hash=request.plugin['hash'])
             output = self.executePlugin.do(request.plugin['name'], command, request.plugin['parameters'], request.plugin['timeout'])
             (raw, verbose, metrics) = self.processOutput(request.plugin['name'],output)
-            # metrics
             request.insertPluginOutput(raw, verbose, metrics)            
-            self.submitBroker(request.answer)
+            self.submitBroker.put(request.answer)
+            #t.stop()
+            #self.logging.debug('Job %s:%s took %s seconds.' % (doc['destination']['name'],doc['destination']['subject'],t.elapsed))
         except Exception as err:
             self.logging.warning('There is a problem executing %s:%s. Reason: %s' % (doc['destination']['name'], doc['destination']['subject'], err))
- 
+            
     def processOutput(self,name,data):
         output = []
         verbose = []
@@ -332,6 +343,7 @@ class ExecutePlugin():
             self.process = Popen(command, shell=True, bufsize=0, stdout=PIPE, stderr=STDOUT, close_fds=True, preexec_fn=os.setsid)
             self.output = self.process.stdout.readlines()
             self.process.stdout.close()
+            sys.exit()
         thread = threading.Thread(target=target)
         thread.start()
         thread.join(timeout)

@@ -23,6 +23,7 @@
 #
 
 from optparse import OptionParser
+from threading import enumerate
 import os
 import sys
 import daemon
@@ -36,11 +37,11 @@ class Server():
         self.config = config
         self.thread_block = True
 
-    def initLogging(self,debug):
+    def initLogging(self,debug,loglevel):
         if debug == True:
-            tools.logger()
+            tools.logger(loglevel=loglevel)
         else:
-            tools.logger(file=self.config['log'])
+            tools.logger(file=self.config['log'],loglevel=loglevel)
             
         self.logging = logging.getLogger(__name__)
         
@@ -79,10 +80,10 @@ class Server():
 
     def start(self,debug=False):
         #Enable profiling.
-        #from tools import Profile
+        #from moncli.tools import Profile
         #prof = Profile()
         
-        self.initLogging(debug=debug)
+        self.initLogging(debug=debug,loglevel=logging.DEBUG)
         
         sys.path.append(self.config['lib'])
 
@@ -95,7 +96,7 @@ class Server():
         while self.block() == True:
             try:
                 #Initialize Broker
-                broker = engine.Broker(host=self.config['broker'])
+                broker = engine.Broker(host=self.config['broker'], block=self.block)
 
                 #Setup scheduler
                 scheduler = engine.JobScheduler(cache_file=self.config['cache'], 
@@ -106,7 +107,7 @@ class Server():
                 broker.addToScheduler = getattr(scheduler, 'do')
 
                 #Send reports back to broker
-                scheduler.submitBroker = getattr(broker, 'submitReport')
+                scheduler.submitBroker = getattr(broker, 'brokerq')
 
                 #Load the scheduler cache if available.
                 scheduler.load()
@@ -115,13 +116,20 @@ class Server():
                 broker.connection.ioloop.start()
 
             except KeyboardInterrupt:
+                #prof.write()
                 scheduler.shutdown()
                 self.thread_block = False
                 broker.connection.close()
                 broker.connection.ioloop.start()
                 scheduler.shutdown()
+                for thread in enumerate():
+                    if thread.isAlive():
+                        try:
+                            thread._Thread__stop()
+                        except:
+                            pass
                 os.remove(self.config['pid'])
-                sys.exit
+                sys.exit()
             except:
                 if broker.connection.is_open == True:
                     broker.connection.close()
