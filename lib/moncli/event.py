@@ -24,7 +24,7 @@
 
 from jsonschema import Validator
 from uuid import uuid4
-from time import strftime, localtime
+from time import strftime, gmtime
 from tools import Calculator
 import logging
 
@@ -46,15 +46,8 @@ class Request():
         document_schema = {
             "type" : "object",
             "additionalProperties": False,
+            "required" : True,
             "properties" : {
-                "source" : {
-                    "type" : "object",
-                    "required" : True,
-                    "additionalProperties": False,
-                    "properties" : {
-                        "name" : {"type" : "string", "required" : True }
-                    }
-                },
                 "destination" : {
                     "type" : "object",
                     "required" : True,
@@ -78,6 +71,7 @@ class Request():
                     "additionalProperties": False,
                     "properties" : {
                         "uuid" : {"type" : "string", "required" : True },
+                        "source" : {"type" : "string", "required" : True },
                         "time" : {"type" : "string", "required" : True },
                         "day_of_year" : {"type" : "number", "required" : True },
                         "day_of_week" : {"type" : "number", "required" : True },
@@ -132,17 +126,15 @@ class Request():
 
     def __initReport(self,doc):
         return {
-           "source":{
-              "uuid":doc['request']['uuid'],
-           },
            "destination":{
               "name":doc['destination']['name'],
               "subject":doc['destination']['subject'],
            },
+           "request":doc['request'],
            "report":{
               "uuid":str(uuid4()),
               "message":None,
-              "time":strftime("%Y-%m-%dT%H:%M:%S%z", localtime()),
+              "time":strftime("%Y-%m-%dT%H:%M:%S%z", gmtime()),
               "day_of_year":int(strftime("%j")),
               "day_of_week":int(strftime("%w")),
               "week_of_year":int(strftime("%W")),

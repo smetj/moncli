@@ -28,7 +28,7 @@ from urllib2 import urlopen
 import logging
 import os
 import re
-import yappi
+#import yappi
         
 class Calculator():
  

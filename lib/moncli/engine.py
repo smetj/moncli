@@ -104,10 +104,10 @@ class Broker(threading.Thread):
         self.logging = logging.getLogger(__name__)
         self.logging.info('Broker started')
         self.daemon=True
+        self.__start_connect()
         self.start()
     
     def run(self):
-        self.__start_connect()
         while self.block()==True:
             self.submitReport(self.brokerq.get(block=True))
             time.sleep(0.5)            
@@ -302,7 +302,9 @@ class ReportRequestExecutor():
         while len(data) != 0:
             line = data.pop(0)
             if str(line) == '~==.==~\n':
-                verbose = "\n".join(data)
+                for i,v in enumerate(data):
+                    data[i] = v.rstrip('\n')
+                verbose = data
                 break
             else:
                 output.append(line)
