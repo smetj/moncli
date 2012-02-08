@@ -146,11 +146,18 @@ class Broker(threading.Thread):
                         properties=pika.BasicProperties(delivery_mode=2))
 
     def submitReport(self, data):
-        self.logging.debug('Submitting a Report to moncli_reports')
-        self.channel.basic_publish(exchange='moncli_reports',
-                        routing_key='',
-                        body=json.dumps(data),
-                        properties=self.properties)
+        while self.block() == True:
+            try:
+                self.logging.debug('Submitting a Report to moncli_reports')
+                self.channel.basic_publish(exchange='moncli_reports',
+                            routing_key='',
+                            body=json.dumps(data),
+                            properties=self.properties)
+                break
+            except:
+                self.logging.warning('Problems submitting data to broker but I will take a nap and try again.')
+                #Should be incremental sleep
+                time.sleep(1)
         
     def acknowledgeTag(self, tag):
         '''Function which is shared by all scheduler jobs which allows to acknowledge requests from broker.'''

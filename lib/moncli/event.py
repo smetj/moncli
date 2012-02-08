@@ -24,7 +24,7 @@
 
 from jsonschema import Validator
 from uuid import uuid4
-from time import strftime, gmtime
+from time import strftime, localtime
 from tools import Calculator
 import logging
 
@@ -125,6 +125,9 @@ class Request():
         pass
 
     def __initReport(self,doc):
+        here_now = localtime()
+        iso8601 = strftime("%Y-%m-%dT%H:%M:%S",here_now)
+        iso8601 += strftime("%z")
         return {
            "destination":{
               "name":doc['destination']['name'],
@@ -134,13 +137,14 @@ class Request():
            "report":{
               "uuid":str(uuid4()),
               "message":None,
-              "time":strftime("%Y-%m-%dT%H:%M:%S%z", gmtime()),
-              "day_of_year":int(strftime("%j")),
-              "day_of_week":int(strftime("%w")),
-              "week_of_year":int(strftime("%W")),
-              "month":int(strftime("%m")),
-              "year":int(strftime("%Y")),
-              "day":int(strftime("%d"))
+              "time":iso8601,
+              "timezone":strftime("%z"),
+              "day_of_year":int(strftime("%j",here_now)),
+              "day_of_week":int(strftime("%w",here_now)),
+              "week_of_year":int(strftime("%W",here_now)),
+              "month":int(strftime("%m",here_now)),
+              "year":int(strftime("%Y",here_now)),
+              "day":int(strftime("%d",here_now))
            },
            "plugin":{
               "name":doc['plugin']['name'],
