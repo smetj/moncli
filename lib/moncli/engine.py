@@ -110,7 +110,6 @@ class Broker(threading.Thread):
             try:
                 self.__start_connect()
                 while self.block()==True:
-                    print self.brokerq.qsize()
                     self.submitReport(self.brokerq.get(block=True))
             except:
                 pass
