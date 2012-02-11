@@ -104,13 +104,16 @@ class Broker(threading.Thread):
         self.logging = logging.getLogger(__name__)
         self.logging.info('Broker started')
         self.daemon=True
-        self.__start_connect()
-        self.start()
     
     def run(self):
         while self.block()==True:
-            self.submitReport(self.brokerq.get(block=True))
-            time.sleep(0.5)            
+            try:
+                self.__start_connect()
+                while self.block()==True:
+                    print self.brokerq.qsize()
+                    self.submitReport(self.brokerq.get(block=True))
+            except:
+                pass
 
     def __start_connect(self):
         self.connection = SelectConnection(self.parameters, self.__on_connected)
@@ -146,18 +149,11 @@ class Broker(threading.Thread):
                         properties=pika.BasicProperties(delivery_mode=2))
 
     def submitReport(self, data):
-        while self.block() == True:
-            try:
-                self.logging.debug('Submitting a Report to moncli_reports')
-                self.channel.basic_publish(exchange='moncli_reports',
-                            routing_key='',
-                            body=json.dumps(data),
-                            properties=self.properties)
-                break
-            except:
-                self.logging.warning('Problems submitting data to broker but I will take a nap and try again.')
-                #Should be incremental sleep
-                time.sleep(1)
+        self.logging.debug('Submitting a Report to moncli_reports')
+        self.channel.basic_publish(exchange='moncli_reports',
+                    routing_key='',
+                    body=json.dumps(data),
+                    properties=self.properties)
         
     def acknowledgeTag(self, tag):
         '''Function which is shared by all scheduler jobs which allows to acknowledge requests from broker.'''
@@ -201,8 +197,8 @@ class JobScheduler():
         self.submitBroker = None
         self.request = {}
         self.cache_file = cache_file
-        self.local_repo=local_repo
-        self.remote_repo=remote_repo
+        self.local_repo = local_repo
+        self.remote_repo = remote_repo
         self.do_lock = Lock()
         self.sched.start()
 

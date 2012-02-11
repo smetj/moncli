@@ -69,8 +69,33 @@ class Server():
     def block(self):
         return self.thread_block
 
+    def __shutdown(self):
+        self.scheduler.shutdown()
+        self.thread_block = False
+        if self.broker.connection != None:
+            self.broker.connection.close()
+            self.broker.connection.ioloop.start()
+        self.scheduler.shutdown()
+        for thread in enumerate():
+            if thread.isAlive():
+                try:
+                    thread._Thread__stop()
+                except:
+                    pass
+        os.remove(self.config['pid'])
+        sys.exit()
+    def __initBroker(self):
+        self.broker.start()
+        night = 0.5
+        #while (broker.connection == None or not broker.connection.is_open()) and self.block == True:
+        while self.broker.connection == None:
+            self.logging.warn('No connection to broker yet, going to sleep for %s seconds and try again.'%(night))
+            time.sleep(night)
+            if night < 512: night*=2        
+        self.broker.connection.ioloop.start()
     def stop(self):
-        sys.stdout.write('Stopping all queues in a polite way. Sending a Sigint (2) again will make me exit (or moncli stop).\n')
+        sys.stdout.write('Stopping all queues in a polite way. Sending a Sigint (2) again will make me exit (or moncli stop).\n')        
+        
         try:
             pidfile = open(self.config['pid'], 'r')
             os.kill(int(pidfile.readline()), 2)
@@ -94,53 +119,37 @@ class Server():
         broker = None
         scheduler = None
         while self.block() == True:
-            try:
+            try:                
                 #Initialize Broker
-                broker = engine.Broker(host=self.config['broker'], block=self.block)
+                self.broker = engine.Broker(host=self.config['broker'],block=self.block)
 
                 #Setup scheduler
-                scheduler = engine.JobScheduler(cache_file=self.config['cache'], 
-                                local_repo=self.config['local_repo'], 
-                                remote_repo=self.config['local_repo'])
+                self.scheduler = engine.JobScheduler(cache_file=self.config['cache'],
+                                    local_repo=self.config['local_repo'], 
+                                    remote_repo=self.config['local_repo'])
 
                 #Schedule all incoming report requests
-                broker.addToScheduler = getattr(scheduler, 'do')
+                self.broker.addToScheduler = getattr(self.scheduler, 'do')
 
                 #Send reports back to broker
-                scheduler.submitBroker = getattr(broker, 'brokerq')
+                self.scheduler.submitBroker = getattr(self.broker, 'brokerq')
 
                 #Load the scheduler cache if available.
-                scheduler.load()
+                self.scheduler.load()
 
-                #Start consuming and block
-                broker.connection.ioloop.start()
+                #Start broker Connection
+                self.__initBroker()
 
             except KeyboardInterrupt:
                 #prof.write()
-                scheduler.shutdown()
-                self.thread_block = False
-                broker.connection.close()
-                broker.connection.ioloop.start()
-                scheduler.shutdown()
-                for thread in enumerate():
-                    if thread.isAlive():
-                        try:
-                            thread._Thread__stop()
-                        except:
-                            pass
-                os.remove(self.config['pid'])
-                sys.exit()
+                self.__shutdown()
+
             except:
-                if broker.connection.is_open == True:
-                    broker.connection.close()
-                    broker.connection.ioloop.start()
-                if scheduler != None:
-                    scheduler.shutdown()
-                self.logging.warn("Broker connection failed, restarting")
-                time.sleep(1)
+                #This shouldn't happen.  Let outside catch spit error.
+                raise
 
 if __name__ == '__main__':
-    try:
+    #try:
         #Parse command line options
         parser = OptionParser()
         parser.add_option("--broker", dest="broker", default="127.0.0.1", type="string", help="IPaddress or hostname of the broker to connect to.  Default is localhost.")
@@ -188,15 +197,15 @@ if __name__ == '__main__':
             help()
             print ('Unknown option %s \n' % (cli_actions[0]))
             sys.exit()
-    except Exception as err:
-        sys.stderr.write('A fatal error has occurred.\n')
-        sys.stderr.write('Please file a bug report to https://github.com/smetj/Moncli/issues including:\n')
-        sys.stderr.write('\t - Moncli version.\n')
-        sys.stderr.write('\t - Startup parameters.\n')
-        sys.stderr.write('\t - A copy of your moncli.cache file.\n')
-        sys.stderr.write('\t - Your OS and version.\n')
-        sys.stderr.write('\t - Your Python version.\n')
-        sys.stderr.write('\t - The steps to take to reproduce this error.\n')
-        sys.stderr.write('\t - This piece of information: '+ str(type(err))+" "+str(err) + "\n" )
-        #sys.stderr.write(str(traceback.print_exc()))
-        sys.exit(1)
+    #except Exception as err:
+        #sys.stderr.write('A fatal error has occurred.\n')
+        #sys.stderr.write('Please file a bug report to https://github.com/smetj/Moncli/issues including:\n')
+        #sys.stderr.write('\t - Moncli version.\n')
+        #sys.stderr.write('\t - Startup parameters.\n')
+        #sys.stderr.write('\t - A copy of your moncli.cache file.\n')
+        #sys.stderr.write('\t - Your OS and version.\n')
+        #sys.stderr.write('\t - Your Python version.\n')
+        #sys.stderr.write('\t - The steps to take to reproduce this error.\n')
+        #sys.stderr.write('\t - This piece of information: '+ str(type(err))+" "+str(err) + "\n" )
+        ##sys.stderr.write(str(traceback.print_exc()))
+        #sys.exit(1)
