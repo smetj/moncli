@@ -84,6 +84,7 @@ class Server():
                     pass
         os.remove(self.config['pid'])
         sys.exit()
+
     def __initBroker(self):
         self.broker.start()
         night = 0.5
@@ -93,6 +94,7 @@ class Server():
             time.sleep(night)
             if night < 512: night*=2        
         self.broker.connection.ioloop.start()
+
     def stop(self):
         sys.stdout.write('Stopping all queues in a polite way. Sending a Sigint (2) again will make me exit (or moncli stop).\n')        
         
@@ -108,7 +110,7 @@ class Server():
         #from moncli.tools import Profile
         #prof = Profile()
         
-        self.initLogging(debug=debug,loglevel=logging.DEBUG)
+        self.initLogging(debug=debug,loglevel=logging.INFO)
         
         sys.path.append(self.config['lib'])
 

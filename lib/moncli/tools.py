@@ -226,7 +226,7 @@ class Profile():
             print line
 
 
-def logger(file=None,loglevel=logging.DEBUG):
+def logger(file=None,loglevel=logging.INFO):
         format=('%(asctime)s %(levelname)s %(name)s %(message)s')
         if file == None:
             logging.basicConfig(level=loglevel, format=format)
