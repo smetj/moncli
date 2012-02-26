@@ -33,6 +33,7 @@ from datetime import datetime, timedelta
 from subprocess import Popen, STDOUT, PIPE
 from tools import PluginManager
 from moncli.event import Request
+from signal import SIGTERM
 import threading
 import pika
 import pickle
@@ -351,12 +352,10 @@ class ExecutePlugin():
         thread.join(timeout)
                 
         if thread.is_alive():
-            self.logging.warning ( 'Plugin running too long, will terminate it.' )
-            try:
-                self.process.kill()
-            except Exception as err:
-                self.logging.warning ( 'Failed to kill plugin %s. Reason: %s' % ( name, err) )
+            self.logging.warning ( 'Plugin %s is running too long, will terminate it.' % (name) )
+            os.killpg(self.process.pid,SIGTERM)
             thread.join()
+            raise Exception( 'Plugin %s running too long. Terminated.' % (name) )
         else:
             self.process.wait()
             return self.output
