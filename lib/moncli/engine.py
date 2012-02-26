@@ -346,17 +346,18 @@ class ExecutePlugin():
             self.process = Popen(command, shell=True, bufsize=0, stdout=PIPE, stderr=STDOUT, close_fds=True, preexec_fn=os.setsid)
             self.output = self.process.stdout.readlines()
             self.process.stdout.close()
-            sys.exit()
+            self.process.wait()
         thread = threading.Thread(target=target)
         thread.start()
         thread.join(timeout)
                 
         if thread.is_alive():
-            self.logging.warning ( 'Plugin %s is running too long, will terminate it.' % (name) )
+            self.logging.debug ( 'Plugin %s is running too long, will terminate it.' % (name) )
             os.killpg(self.process.pid,SIGTERM)
+            self.logging.debug ('Waiting for thread %s to exit.' % (thread.getName()))
             thread.join()
+            self.logging.debug ('Thread %s exit.' % (thread.getName()))
             raise Exception( 'Plugin %s running too long. Terminated.' % (name) )
         else:
-            self.process.wait()
             return self.output
     
