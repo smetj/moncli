@@ -24,7 +24,6 @@
 from urllib import urlretrieve
 from apscheduler import scheduler
 from amqplib import client_0_8 as amqp
-from socket import getfqdn
 from threading import Lock
 import Queue
 from random import randint
@@ -48,7 +47,7 @@ class Broker(threading.Thread):
     '''Creates an object doing all broker I/O.  It's meant to be resillient to disconnects and broker unavailability.
     Data going to the broker goes into Broker.outgoing_queue.  Data coming from the broker is submitted to the scheduler_callback method'''
     
-    def __init__(self,host='localhost',vhost='/',username='guest',password='guest',exchange='',incoming_q_name=getfqdn(),outgoing_q_name='moncli_reports',scheduler_callback=None,block=None):
+    def __init__(self,host,vhost,username,password,exchange,incoming_q_name,outgoing_q_name,block=None):
         threading.Thread.__init__(self)
         self.logging = logging.getLogger(__name__)
         self.host=host
@@ -59,7 +58,7 @@ class Broker(threading.Thread):
         self.incoming_q_name=incoming_q_name
         self.outgoing_q_name=outgoing_q_name
         self.outgoing_queue=Queue.Queue(0)
-        self.scheduler_callback=scheduler_callback
+        self.scheduler_callback=None
         self.block=block
         self.connected=False
         self.daemon=True

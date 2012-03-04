@@ -24,6 +24,7 @@
 
 from optparse import OptionParser
 from threading import enumerate
+from socket import getfqdn
 import os
 import sys
 import daemon
@@ -110,7 +111,14 @@ class Server():
         while self.block() == True:
             try:                
                 #Initialize Broker
-                self.broker = engine.Broker(host=self.config['broker'],block=self.block)
+                self.broker = engine.Broker(host=self.config['broker_host'],
+                                    vhost=self.config['broker_vhost'],
+                                    username=self.config['broker_username'],
+                                    password=self.config['broker_password'],
+                                    exchange=self.config['broker_exchange'],
+                                    incoming_q_name=self.config['broker_incoming_q'],
+                                    outgoing_q_name=self.config['broker_outgoing_q'],
+                                    block=self.block)
 
                 #Setup scheduler
                 self.scheduler = engine.JobScheduler(cache_file=self.config['cache'],
@@ -142,8 +150,14 @@ class Server():
 if __name__ == '__main__':
     #try:
         #Parse command line options
-        parser = OptionParser()
-        parser.add_option("--broker", dest="broker", default="127.0.0.1", type="string", help="IPaddress or hostname of the broker to connect to.  Default is localhost.")
+        parser = OptionParser(add_help_option=False)
+        parser.add_option("--host", dest="broker_host", default="127.0.0.1", type="string", help="IPaddress or hostname of the broker to connect to.  Default is localhost.")
+        parser.add_option("--vhost", dest="broker_vhost", default="/", type="string", help="The broker virtual host. Defaults to /.")
+        parser.add_option("--username", dest="broker_username", default="guest", type="string", help="The username used to authenticate against the broker. Defaults to guest.")
+        parser.add_option("--password", dest="broker_password", default="guest", type="string", help="The password used to authenticate against the broker. Defaults to guest.")
+        parser.add_option("--incoming_q", dest="broker_incoming_q", default=getfqdn(), type="string", help="Queue name to which Moncli should listen for incoming requests. By default this queue is the hosts FQDN.")
+        parser.add_option("--outgoing_q", dest="broker_outgoing_q", default='moncli_reports', type="string", help="The routing key used to submit data into the broker.  By default this is moncli_reports")
+        parser.add_option("--exchange", dest="broker_exchange", default="", type="string", help="The name of the exchange to which Moncli submits data. Defaults to ''.")
         parser.add_option("--local_repo", dest="local_repo", default=os.getcwd() + '/', type="string", help="Location of the local plugin repository.")
         parser.add_option("--remote_repo", dest="remote_repo", default=None, type="string", help="Location of the remote plugin repository.")
         parser.add_option("--cache", dest="cache", default=os.getcwd() + '/moncli.cache', type="string", help="Scheduler configuration cache.")
@@ -160,6 +174,7 @@ if __name__ == '__main__':
         from moncli import engine
         from moncli import tools
         from moncli.help import help
+
         server = Server(config=config)
 
         #Execute command
