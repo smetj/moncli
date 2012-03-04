@@ -132,7 +132,7 @@ class Broker(threading.Thread):
         if self.connected == True:
             msg = amqp.Message(str(data))
             msg.properties["delivery_mode"] = 2
-            self.outgoing.basic_publish(msg,exchange=self.exchange,routing_key=self.outgoing_q_name)
+            self.outgoing.basic_publish(msg,exchange='moncli_reports')
         else:
             raise Exception('Not Connected to broker')
             
