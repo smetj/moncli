@@ -72,9 +72,6 @@ class Server():
     def __shutdown(self):
         self.scheduler.shutdown()
         self.thread_block = False
-        if self.broker.connection != None:
-            self.broker.connection.close()
-            self.broker.connection.ioloop.start()
         self.scheduler.shutdown()
         for thread in enumerate():
             if thread.isAlive():
@@ -84,16 +81,6 @@ class Server():
                     pass
         os.remove(self.config['pid'])
         sys.exit()
-
-    def __initBroker(self):
-        self.broker.start()
-        night = 0.5
-        #while (broker.connection == None or not broker.connection.is_open()) and self.block == True:
-        while self.broker.connection == None:
-            self.logging.warn('No connection to broker yet, going to sleep for %s seconds and try again.'%(night))
-            time.sleep(night)
-            if night < 512: night*=2        
-        self.broker.connection.ioloop.start()
 
     def stop(self):
         sys.stdout.write('Stopping all queues in a polite way. Sending a Sigint (2) again will make me exit (or moncli stop).\n')        
@@ -129,25 +116,27 @@ class Server():
                 self.scheduler = engine.JobScheduler(cache_file=self.config['cache'],
                                     local_repo=self.config['local_repo'], 
                                     remote_repo=self.config['local_repo'])
-
-                #Schedule all incoming report requests
-                self.broker.addToScheduler = getattr(self.scheduler, 'do')
-
-                #Send reports back to broker
-                self.scheduler.submitBroker = getattr(self.broker, 'brokerq')
+                
+                #Connect one with the other
+                self.scheduler.submitBroker = self.broker.outgoing_queue
+                self.broker.scheduler_callback = self.scheduler.do
 
                 #Load the scheduler cache if available.
                 self.scheduler.load()
 
                 #Start broker Connection
-                self.__initBroker()
+                self.broker.start()
+                
+                #Get messages from incoming queue to scheduler
+                while self.block() == True:
+                    time.sleep(0.1)
 
             except KeyboardInterrupt:
                 #prof.write()
                 self.__shutdown()
 
             except:
-                #This shouldn't happen.  Let outside catch spit error.
+                #This shouldn't happen.
                 raise
 
 if __name__ == '__main__':
@@ -209,5 +198,5 @@ if __name__ == '__main__':
         #sys.stderr.write('\t - Your Python version.\n')
         #sys.stderr.write('\t - The steps to take to reproduce this error.\n')
         #sys.stderr.write('\t - This piece of information: '+ str(type(err))+" "+str(err) + "\n" )
-        ##sys.stderr.write(str(traceback.print_exc()))
+        #sys.stderr.write(str(traceback.print_exc()))
         #sys.exit(1)
