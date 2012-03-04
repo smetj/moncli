@@ -24,7 +24,6 @@
 
 from optparse import OptionParser
 from threading import enumerate
-from socket import getfqdn
 import os
 import sys
 import daemon
@@ -71,6 +70,7 @@ class Server():
         return self.thread_block
 
     def __shutdown(self):
+        self.logging.info('Sending shutdown to all running threads.  Waiting for all threads to end.')
         self.scheduler.shutdown()
         self.thread_block = False
         self.scheduler.shutdown()
@@ -115,9 +115,6 @@ class Server():
                                     vhost=self.config['broker_vhost'],
                                     username=self.config['broker_username'],
                                     password=self.config['broker_password'],
-                                    exchange=self.config['broker_exchange'],
-                                    incoming_q_name=self.config['broker_incoming_q'],
-                                    outgoing_q_name=self.config['broker_outgoing_q'],
                                     block=self.block)
 
                 #Setup scheduler
@@ -155,9 +152,6 @@ if __name__ == '__main__':
         parser.add_option("--vhost", dest="broker_vhost", default="/", type="string", help="The broker virtual host. Defaults to /.")
         parser.add_option("--username", dest="broker_username", default="guest", type="string", help="The username used to authenticate against the broker. Defaults to guest.")
         parser.add_option("--password", dest="broker_password", default="guest", type="string", help="The password used to authenticate against the broker. Defaults to guest.")
-        parser.add_option("--incoming_q", dest="broker_incoming_q", default=getfqdn(), type="string", help="Queue name to which Moncli should listen for incoming requests. By default this queue is the hosts FQDN.")
-        parser.add_option("--outgoing_q", dest="broker_outgoing_q", default='moncli_reports', type="string", help="The routing key used to submit data into the broker.  By default this is moncli_reports")
-        parser.add_option("--exchange", dest="broker_exchange", default="", type="string", help="The name of the exchange to which Moncli submits data. Defaults to ''.")
         parser.add_option("--local_repo", dest="local_repo", default=os.getcwd() + '/', type="string", help="Location of the local plugin repository.")
         parser.add_option("--remote_repo", dest="remote_repo", default=None, type="string", help="Location of the remote plugin repository.")
         parser.add_option("--cache", dest="cache", default=os.getcwd() + '/moncli.cache', type="string", help="Scheduler configuration cache.")

@@ -32,6 +32,7 @@ from subprocess import Popen, STDOUT, PIPE
 from tools import PluginManager
 from moncli.event import Request
 from signal import SIGTERM
+from socket import getfqdn
 import threading
 import pickle
 import json
@@ -47,16 +48,13 @@ class Broker(threading.Thread):
     '''Creates an object doing all broker I/O.  It's meant to be resillient to disconnects and broker unavailability.
     Data going to the broker goes into Broker.outgoing_queue.  Data coming from the broker is submitted to the scheduler_callback method'''
     
-    def __init__(self,host,vhost,username,password,exchange,incoming_q_name,outgoing_q_name,block=None):
+    def __init__(self,host,vhost,username,password,block=None):
         threading.Thread.__init__(self)
         self.logging = logging.getLogger(__name__)
         self.host=host
         self.vhost=vhost
         self.username=username
         self.password=password
-        self.exchange=exchange
-        self.incoming_q_name=incoming_q_name
-        self.outgoing_q_name=outgoing_q_name
         self.outgoing_queue=Queue.Queue(0)
         self.scheduler_callback=None
         self.block=block
@@ -67,7 +65,23 @@ class Broker(threading.Thread):
         self.conn = amqp.Connection(host="%s:5672"%(self.host), userid=self.username,password=self.password, virtual_host=self.vhost, insist=False)
         self.incoming = self.conn.channel()
         self.outgoing = self.conn.channel()
-        self.incoming.basic_consume(queue=self.incoming_q_name, callback=self.consume)
+        
+        #create exchange and queue
+        #Outgoing
+        self.outgoing.exchange_declare(exchange='moncli_reports', type="fanout", durable=True,auto_delete=False)
+        self.outgoing.queue_declare(queue='moncli_reports', durable=True,exclusive=False, auto_delete=False)
+        self.outgoing.queue_bind(queue='moncli_reports', exchange='moncli_reports')
+        
+        #incoming
+        self.incoming.exchange_declare(exchange='moncli_requests', type="direct", durable=True,auto_delete=False)
+        self.incoming.exchange_declare(exchange='moncli_requests_broadcast', type="fanout", durable=True,auto_delete=False)
+        self.incoming.queue_declare(queue=getfqdn(), durable=True,exclusive=False, auto_delete=False)
+        self.incoming.queue_bind(queue=getfqdn(), exchange='moncli_requests')
+        self.incoming.queue_bind(queue=getfqdn(), exchange='moncli_requests_broadcast')
+        
+        #define consumer
+        self.incoming.basic_consume(queue=getfqdn(), callback=self.consume)
+
         self.logging.info('Connected to broker')
     
     def submitBroker(self):

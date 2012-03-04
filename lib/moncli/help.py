@@ -47,9 +47,6 @@ def help():
         --vhost         The broker virtual host. Defaults to "/".
         --username      The username used to authenticate against the broker. Defaults to "guest".
         --password      The password used to authenticate against the broker. Defaults to "guest".
-        --incoming_q    Queue name to which Moncli should listen for incoming requests. By default this queue is the FQDN.
-        --outgoing_q    The routing key used to submit data into the broker.  By default this is "moncli_reports".
-        --exchange      The name of the exchange to which Moncli submits data. Defaults to ''.
         --local_repo    The location of the local plugin repository.
         --remote_repo   The location of the remote plugin repository.
         --cache         The location where the configuration cache is written and read from on startup.
