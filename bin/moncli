@@ -115,7 +115,7 @@ class Server():
                 #Setup scheduler
                 self.scheduler = engine.JobScheduler(cache_file=self.config['cache'],
                                     local_repo=self.config['local_repo'], 
-                                    remote_repo=self.config['local_repo'])
+                                    remote_repo=self.config['remote_repo'])
                 
                 #Connect one with the other
                 self.scheduler.submitBroker = self.broker.outgoing_queue

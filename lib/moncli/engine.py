@@ -220,8 +220,8 @@ class JobScheduler():
         self.logging.debug('Registered job %s' % (name))
         self.request[name] = {'function': None, 'scheduler': None, 'document': None}
         self.request[name]['document'] = doc
-        self.request[name]['function'] = ReportRequestExecutor(local_repo='/opt/moncli/lib/repository',
-                                                    remote_repo='http://blah',
+        self.request[name]['function'] = ReportRequestExecutor(local_repo=self.local_repo,
+                                                    remote_repo=self.remote_repo,
                                                     submitBroker=self.submitBroker)
 
     def __schedule(self, doc):
