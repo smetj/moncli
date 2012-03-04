@@ -46,13 +46,14 @@ import sys
 
 class Broker(threading.Thread):
     
-    def __init__(self,host='localhost',vhost='/',username='guest',password='guest',incoming_q_name=getfqdn(),outgoing_q_name='moncli_reports',scheduler_callback=None,block=None):
+    def __init__(self,host='localhost',vhost='/',username='guest',password='guest',exchange='',incoming_q_name=getfqdn(),outgoing_q_name='moncli_reports',scheduler_callback=None,block=None):
         threading.Thread.__init__(self)
         self.logging = logging.getLogger(__name__)
         self.host=host
         self.vhost=vhost
         self.username=username
         self.password=password
+        self.exchange=exchange
         self.incoming_q_name=incoming_q_name
         self.outgoing_q_name=outgoing_q_name
         self.outgoing_queue=Queue.Queue(0)
@@ -114,7 +115,7 @@ class Broker(threading.Thread):
         if self.connected == True:
             msg = amqp.Message(str(data))
             msg.properties["delivery_mode"] = 2
-            self.outgoing.basic_publish(msg,exchange="",routing_key=self.outgoing_q_name)
+            self.outgoing.basic_publish(msg,exchange=self.exchange,routing_key=self.outgoing_q_name)
         else:
             raise Exception('Not Connected to broker')
             
