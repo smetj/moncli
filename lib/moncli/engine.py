@@ -45,6 +45,8 @@ import sys
 
 
 class Broker(threading.Thread):
+    '''Creates an object doing all broker I/O.  It's meant to be resillient to disconnects and broker unavailability.
+    Data going to the broker goes into Broker.outgoing_queue.  Data coming from the broker is submitted to the scheduler_callback method'''
     
     def __init__(self,host='localhost',vhost='/',username='guest',password='guest',exchange='',incoming_q_name=getfqdn(),outgoing_q_name='moncli_reports',scheduler_callback=None,block=None):
         threading.Thread.__init__(self)
@@ -92,24 +94,26 @@ class Broker(threading.Thread):
                 self.connected=True
                 night=0.5
                 self.incoming.wait()
+                self.conn.close()
             except Exception as err:
                 self.connected=False
                 self.logging.warning('Connection to broker lost. Reason: %s. Try again in %s seconds.' % (err,night) )
                 time.sleep(night)
-            #self.incoming.close()
-            #self.outgoing.close()
-            #self.conn.close()
         self.produce.join()
+        
     def startProduceThread(self):
         self.produce_thread = threading.Thread(target=self.submitBroker)
         self.produce_thread.start()
         
     def consume(self,doc):
         try:
+            data = json.loads(doc.body)
+            Request.validate(data=data)
+        except Exception as err:
+            self.logging.warn('Problem processing incoming data. Reason: %s' % (err))
+        else:
             self.scheduler_callback(json.loads(doc.body))
-            self.incoming.basic_ack(doc.delivery_tag)
-        except:
-            print "kakakakakakan"
+        self.incoming.basic_ack(doc.delivery_tag)
         
     def produce(self,data):
         if self.connected == True:
