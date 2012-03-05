@@ -90,7 +90,7 @@ class Broker(threading.Thread):
                 while self.outgoing_queue.qsize() > 0:
                     try:
                         self.logging.info('Submitting data to broker')
-                        self.produce(self.outgoing_queue.get())
+                        self.produce(json.dumps(self.outgoing_queue.get()))
                     except:
                         break
                 time.sleep(0.1)
