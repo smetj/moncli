@@ -26,6 +26,7 @@ from jsonschema import Validator
 from uuid import uuid4
 from time import strftime, localtime
 from tools import Calculator
+from socket import getfqdn
 import logging
 
 class Request():
@@ -90,7 +91,7 @@ class Request():
                         "name" : {"type" : "string", "required" : True },
                         "hash" : {"type" : "string", "required" : True },
                         "timeout" : {"type" : "number", "required" : True },
-                        "parameters" : {"type" : "string", "required" : True }
+                        "parameters" : {"type" : "array", "required" : True }
                     }
                 },
                 "evaluators" : {
@@ -136,6 +137,7 @@ class Request():
            "request":doc['request'],
            "report":{
               "uuid":str(uuid4()),
+              "source":getfqdn(),
               "message":None,
               "time":iso8601,
               "timezone":strftime("%z"),

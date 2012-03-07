@@ -109,41 +109,40 @@ class Server():
         pidfile.close()
         broker = None
         scheduler = None
-        while self.block() == True:
-            try:                
-                #Initialize Broker
-                self.broker = engine.Broker(host=self.config['broker_host'],
-                                    vhost=self.config['broker_vhost'],
-                                    username=self.config['broker_username'],
-                                    password=self.config['broker_password'],
-                                    block=self.block)
+        try:                
+            #Initialize Broker
+            self.broker = engine.Broker(host=self.config['broker_host'],
+                                vhost=self.config['broker_vhost'],
+                                username=self.config['broker_username'],
+                                password=self.config['broker_password'],
+                                block=self.block)
 
-                #Setup scheduler
-                self.scheduler = engine.JobScheduler(cache_file=self.config['cache'],
-                                    local_repo=self.config['local_repo'], 
-                                    remote_repo=self.config['remote_repo'])
-                
-                #Connect one with the other
-                self.scheduler.submitBroker = self.broker.outgoing_queue
-                self.broker.scheduler_callback = self.scheduler.do
+            #Setup scheduler
+            self.scheduler = engine.JobScheduler(cache_file=self.config['cache'],
+                                local_repo=self.config['local_repo'], 
+                                remote_repo=self.config['remote_repo'])
+            
+            #Connect one with the other
+            self.scheduler.submitBroker = self.broker.outgoing_queue
+            self.broker.scheduler_callback = self.scheduler.do
 
-                #Load the scheduler cache if available.
-                self.scheduler.load()
+            #Load the scheduler cache if available.
+            self.scheduler.load()
 
-                #Start broker Connection
-                self.broker.start()
-                
-                #Get messages from incoming queue to scheduler
-                while self.block() == True:
-                    time.sleep(0.1)
+            #Start broker Connection
+            self.broker.start()
+            
+            #Block
+            while self.block() == True:
+                time.sleep(0.1)
 
-            except KeyboardInterrupt:
-                #prof.write()
-                self.__shutdown()
+        except KeyboardInterrupt:
+            #prof.write()
+            self.__shutdown()
 
-            except:
-                #This shouldn't happen.
-                raise
+        except Exception as err:
+            self.logging.warning ( 'An error occurred which should not happen. Please file a bugreport. Reason: %s' % err )
+            time.sleep(1)
 
 if __name__ == '__main__':
     try:

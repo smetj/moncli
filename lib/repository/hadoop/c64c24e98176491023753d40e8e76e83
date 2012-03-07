@@ -1,0 +1,67 @@
+#!/usr/bin/perl
+# -*- coding: utf-8 -*-
+#
+#       hadoop
+#       
+#       Copyright 2012 Jelle Smet development@smetj.net
+#       
+#       This program is free software; you can redistribute it and/or modify
+#       it under the terms of the GNU General Public License as published by
+#       the Free Software Foundation; either version 3 of the License, or
+#       (at your option) any later version.
+#       
+#       This program is distributed in the hope that it will be useful,
+#       but WITHOUT ANY WARRANTY; without even the implied warranty of
+#       MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
+#       GNU General Public License for more details.
+#       
+#       You should have received a copy of the GNU General Public License
+#       along with this program; if not, write to the Free Software
+#       Foundation, Inc., 51 Franklin Street, Fifth Floor, Boston,
+#       MA 02110-1301, USA.
+#       
+#    
+
+use LWP::Simple;
+my $content;
+my $url;
+my @output=();
+
+my %ports = (   "nn"    => "50070",
+                "sn"    => "50090",
+                "jt"    => "50030",
+                "hm"    => "60010",
+                "dn"    => "50075",
+                "rs"    => "60030",
+                "tt"    => "50060" );
+
+my $host = $ARGV[0] || 'localhost';
+
+for my $port (keys %ports){    
+    @output = ( @output, get_content("$host:$ports{$port}",$port));
+}
+
+for my $line (@output){
+    print $line,"\n";
+}
+
+sub get_content(){
+    my $url = shift;
+    my $type = shift;
+    my @output;
+    unless (defined (@content = split ( /\n/, get "http://$url/metrics"))) {
+        return ();
+    }
+    my $prefix="unknown";
+    foreach (@content){
+        $prefix="jvm" if $_ eq "jvm";
+        $prefix="rpc" if $_ eq "rpc";
+        $prefix="dfs" if $_ eq "dfs";
+        if ( $_ =~ /(\w+)=(\d+)/ ){
+            push ( @output, "$type.$prefix.$1:$2" );
+        }
+    }
+    return @output;
+}
+
+print "Source: $0\n";

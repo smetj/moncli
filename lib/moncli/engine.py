@@ -65,6 +65,10 @@ class Broker(threading.Thread):
         self.conn = amqp.Connection(host="%s:5672"%(self.host), userid=self.username,password=self.password, virtual_host=self.vhost, insist=False)
         self.incoming = self.conn.channel()
         self.outgoing = self.conn.channel()
+        self.logging.info('Connected to broker')
+        
+    def __createQE(self):
+        '''Creates all required queues and exchanges.'''
         
         #create exchange and queue
         #Outgoing
@@ -78,12 +82,7 @@ class Broker(threading.Thread):
         self.incoming.queue_declare(queue=getfqdn(), durable=True,exclusive=False, auto_delete=False)
         self.incoming.queue_bind(queue=getfqdn(), exchange='moncli_requests')
         self.incoming.queue_bind(queue=getfqdn(), exchange='moncli_requests_broadcast')
-        
-        #define consumer
-        self.incoming.basic_consume(queue=getfqdn(), callback=self.consume)
-
-        self.logging.info('Connected to broker')
-    
+            
     def submitBroker(self):
         while self.block() == True:
             while self.connected == True:
@@ -100,18 +99,36 @@ class Broker(threading.Thread):
         night=0.5
         self.startProduceThread()
         while self.block() == True:
+            while self.connected==False:
+                try:
+                    if night < 512:
+                        night *=2
+                    self.__setup()
+                    self.__createQE()
+                    self.connected=True
+                    night=0.5
+                except Exception as err:
+                    self.connected=False
+                    self.logging.warning('Connection to broker lost. Reason: %s. Try again in %s seconds.' % (err,night) )
+                    time.sleep(night)
+            
+            #Register our callback
             try:
-                if night < 512:
-                    night *=2
-                self.__setup()
-                self.connected=True
-                night=0.5
-                self.incoming.wait()
-                self.conn.close()
-            except Exception as err:
-                self.connected=False
-                self.logging.warning('Connection to broker lost. Reason: %s. Try again in %s seconds.' % (err,night) )
-                time.sleep(night)
+                self.incoming.basic_consume(queue=getfqdn(), callback=self.consume, consumer_tag='request')    
+            except:
+                self.connected = False
+            
+            while self.block() == True and self.connected == True:
+                try:
+                    self.incoming.wait()
+                except Exception as err:
+                    self.incoming.basic_cancel("request")
+                    self.logging.warning('Connection to broker lost. Reason: %s' % err )
+                    self.connected == False
+                    self.incoming.close()
+                    self.conn.close()
+                    break
+                
         self.produce.join()
         
     def startProduceThread(self):
