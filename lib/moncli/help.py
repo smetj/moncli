@@ -51,7 +51,6 @@ def help():
         --remote_repo   The location of the remote plugin repository.
         --cache         The location where the configuration cache is written and read from on startup.
         --pid           The location of the pid file.
-        --log           The location of the log file.
         --lib           The library path to include to the search path.
         --rand_window   The value in seconds which is added to the first schedule of a job in order to spread jobs.
                         Default value is 60 seconds.

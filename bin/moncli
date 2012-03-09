@@ -42,7 +42,7 @@ class Server():
         if debug == True:
             tools.logger(loglevel=loglevel)
         else:
-            tools.logger(file=self.config['log'],loglevel=loglevel)
+            tools.logger(syslog=True,loglevel=loglevel)
             
         self.logging = logging.getLogger(__name__)
         
@@ -156,7 +156,6 @@ if __name__ == '__main__':
         parser.add_option("--remote_repo", dest="remote_repo", default=None, type="string", help="Location of the remote plugin repository.")
         parser.add_option("--cache", dest="cache", default=os.getcwd() + '/moncli.cache', type="string", help="Scheduler configuration cache.")
         parser.add_option("--pid", dest="pid", default=os.getcwd() + "/moncli.pid", type="string", help="The location of the pid file.")
-        parser.add_option("--log", dest="log", default=os.getcwd() + "/moncli.log", type="string", help="The location of the log file.")
         parser.add_option("--lib", dest='lib', default='/opt/moncli/lib', type='string', help="The library path to include to the search.")
         parser.add_option("--rand_window", dest='rand_window', default='60', type='string', help="The value in seconds which is added to the first schedule of a job in order to spread jobs.")
 

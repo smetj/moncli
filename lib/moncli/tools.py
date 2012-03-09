@@ -25,6 +25,7 @@ from __future__ import division
 from platform import system,machine
 from hashlib import md5
 from urllib2 import urlopen
+from logging.handlers import SysLogHandler
 import logging
 import os
 import re
@@ -226,10 +227,14 @@ class Profile():
             print line
 
 
-def logger(file=None,loglevel=logging.INFO):
+def logger(syslog=False,loglevel=logging.INFO):
         format=('%(asctime)s %(levelname)s %(name)s %(message)s')
-        if file == None:
+        if syslog == False:
             logging.basicConfig(level=loglevel, format=format)
         else:
-            print file
-            logging.basicConfig(filename=file, level=loglevel, format=format)
+            logger = logging.getLogger()
+            logger.setLevel(loglevel)
+            syslog = SysLogHandler(address='/dev/log')
+            formatter = logging.Formatter(format)
+            syslog.setFormatter(formatter)
+            logger.addHandler(syslog)
