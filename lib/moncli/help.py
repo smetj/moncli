@@ -22,7 +22,7 @@
 #       
 #       
 
-__version__='0.2.4'
+__version__='0.2.5'
 
 def help():
     '''Produces command line help message.'''

@@ -305,6 +305,7 @@ class ExecutePlugin():
     def do(self, name, command=None, parameters=[], timeout=30):
         self.process = None
         command = ("%s %s" % (command, ' '.join(parameters)))
+        print command
         self.output=None
         def target():
             self.process = Popen(command, shell=True, bufsize=0, stdout=PIPE, stderr=STDOUT, close_fds=True, preexec_fn=os.setsid)
