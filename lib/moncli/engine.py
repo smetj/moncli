@@ -40,7 +40,6 @@ import os
 import time
 import logging
 import sys
-#import stopwatch
 
 
 
@@ -167,7 +166,6 @@ class ReportRequestExecutor():
 
     def do(self,doc):
         try:
-            #t = stopwatch.Timer()
             self.logging.info('Executing a request with destination %s:%s' % (doc['destination']['name'], doc['destination']['subject']))
             request = Request(doc=doc)
             command = self.pluginManager.getExecutable(command=request.plugin['name'], hash=request.plugin['hash'])
@@ -175,8 +173,6 @@ class ReportRequestExecutor():
             (raw, verbose, metrics) = self.processOutput(request.plugin['name'],output)
             request.insertPluginOutput(raw, verbose, metrics)            
             self.submitBroker.put(request.answer)
-            #t.stop()
-            #self.logging.debug('Job %s:%s took %s seconds.' % (doc['destination']['name'],doc['destination']['subject'],t.elapsed))
         except Exception as err:
             self.logging.warning('There is a problem executing %s:%s. Reason: %s' % (doc['destination']['name'], doc['destination']['subject'], err))
             
