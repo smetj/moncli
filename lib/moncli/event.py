@@ -181,6 +181,7 @@ class Request():
         self.answer['plugin']['metrics'] = metrics
         self.__calculate()
         self.answer['plugin']['metrics'] = self.removePreData(self.answer['plugin']['metrics'])
+   
     def removePreData(self,metrics):
         '''Removes all the pre_ metrics.  There's no use to send that back as one could have stored the previous report.'''
         for key in metrics.keys():
