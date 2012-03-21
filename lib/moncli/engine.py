@@ -212,7 +212,7 @@ class ReportRequestExecutor():
 
     def __cleanKey(self,key):
         '''Keys can only contains numbers, letters, dots and underscores.  All the rest is filtered out.'''
-        return ''.join(re.findall('\w|\d|\.|_',key))
+        return ''.join(findall('\w|\d|\.|_',key))
 
         
 class JobScheduler():
