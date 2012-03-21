@@ -1,0 +1,44 @@
+#!/usr/bin/perl
+use strict;
+use warnings;
+
+my $type='now';
+my $title='Values at the moment of plugin execution.';
+my $command;
+
+if ( defined $ARGV[0] && $ARGV[0] eq '-now' ){
+	$command = 'mpstat -P ALL 1 1|';
+}
+else{
+	$type = 'avg';
+	$title='Average values since uptime.';
+
+	$command = 'mpstat -P ALL|';
+}
+
+open FH,$command;
+my @output=<FH>;
+close FH;
+
+$output[2] =~ s/%//gm;
+my @header = split(/\s+/,$output[2]);
+
+foreach (reverse(@output)){
+    if ( $_ =~ /^Average:.*/ || $_ =~ /^\d\d:\d\d:\d\d.*/ ){
+        $_ =~ s/AM|PM//;
+        my @line = split(/\s+/,$_);
+        if ( $line[1] =~ /all|\d+/){
+            for my $index (2 .. $#line){
+                printf ( "%s.%s:%s\n", $line[1], $header[$index+1],$line[$index] );
+            }
+        }
+    }
+    else{
+        last;
+    }
+}
+
+print "~==.==~\n";
+print $title,"\n\n";
+print @output,"\n";
+print "Source: $0\n";
