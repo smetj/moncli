@@ -33,7 +33,7 @@ from tools import PluginManager
 from moncli.event import Request
 from signal import SIGTERM
 from socket import getfqdn
-from re import string
+from re import findall
 import threading
 import pickle
 import json
@@ -193,8 +193,8 @@ class ReportRequestExecutor():
                 try:
                     key_value = line.split(":")
                     dictionary[self.__cleanKey(key_value[0])] = key_value[1].rstrip('\n')
-                except:
-                    pass
+                except Exception as err:
+                    self.logging.warn('Possible dirty key value list produced by plugin. Reason: %s' % (err))
         #Add epoch time
         dictionary["epoch"] = round(time.time())
         #Extend the metrics with the previous ones.
@@ -211,7 +211,9 @@ class ReportRequestExecutor():
         return merged_dictionary
 
     def __cleanKey(self,key):
-        return sub('\W','',key)
+        '''Keys can only contains numbers, letters, dots and underscores.  All the rest is filtered out.'''
+        return ''.join(re.findall('\w|\d|\.|_',key))
+
         
 class JobScheduler():
 
