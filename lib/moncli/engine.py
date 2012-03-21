@@ -33,6 +33,7 @@ from tools import PluginManager
 from moncli.event import Request
 from signal import SIGTERM
 from socket import getfqdn
+from re import string
 import threading
 import pickle
 import json
@@ -191,7 +192,7 @@ class ReportRequestExecutor():
                 output.append(line)
                 try:
                     key_value = line.split(":")
-                    dictionary[key_value[0]] = key_value[1].rstrip('\n')
+                    dictionary[self.__cleanKey(key_value[0])] = key_value[1].rstrip('\n')
                 except:
                     pass
         #Add epoch time
@@ -209,7 +210,9 @@ class ReportRequestExecutor():
         self.cache[plugin] = dictionary
         return merged_dictionary
 
-
+    def __cleanKey(self,key):
+        return sub('\W','',key)
+        
 class JobScheduler():
 
     def __init__(self, cache_file, local_repo, remote_repo):
