@@ -25,7 +25,7 @@ RETVAL=0
 start() {
     echo -n $"Starting Moncli: " 
     # Start me up!
-    $PYTHON_EXEC $MONCLI_EXEC start --host besrvup-sss01 --local_repo /opt/moncli/lib/repository --cache /opt/moncli/var/moncli.cache --pid /opt/moncli/var/moncli.pid --log /opt/moncli/var/moncli.log
+    $PYTHON_EXEC $MONCLI_EXEC start --host besrvup-sss01 --local_repo /opt/moncli/lib/repository --cache /opt/moncli/var/moncli.cache --pid /opt/moncli/var/moncli.pid
     RETVAL=$?
     echo
     return $RETVAL
@@ -33,7 +33,7 @@ start() {
 
 stop() {
     echo -n $"Stopping Moncli: " 
-    $PYTHON_EXEC $MONCLI_EXEC stop --host besrvup-sss01 --local_repo /opt/moncli/lib/repository --cache /opt/moncli/var/moncli.cache --pid /opt/moncli/var/moncli.pid --log /opt/moncli/var/moncli.log
+    $PYTHON_EXEC $MONCLI_EXEC stop --host besrvup-sss01 --local_repo /opt/moncli/lib/repository --cache /opt/moncli/var/moncli.cache --pid /opt/moncli/var/moncli.pid
     return $RETVAL
 }    
 
