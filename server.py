@@ -1,7 +1,7 @@
 #!/usr/bin/env python
 # -*- coding: utf-8 -*-
 #
-#       untitled.py
+#       server.py
 #       
 #       Copyright 2012 Jelle Smet development@smetj.net
 #       
@@ -23,7 +23,7 @@
 #       
 
 import sys
-sys.path.append('/opt/untitled/lib/modules')
+sys.path.append('/opt/moncli/lib/modules')
 
 import wishbone
 import moncli
@@ -37,11 +37,11 @@ if __name__ == '__main__':
     wb.registerBroker( host='sandbox', vhost='/', username='guest', password='guest', consume_queue=getfqdn() )
     wb.registerUDPServer ( port='9001' )
     
-    wb.registerBlock ( 'wishbone', 'JSONValidator', 'validateBrokerData', schema='/opt/untitled/lib/schema/broker' )
-    wb.registerBlock ( 'wishbone', 'JSONValidator', 'validateUDPData', schema='/opt/untitled/lib/schema/udp' )
+    wb.registerBlock ( 'wishbone', 'JSONValidator', 'validateBrokerData', schema='/opt/moncli/lib/schema/broker' )
+    wb.registerBlock ( 'wishbone', 'JSONValidator', 'validateUDPData', schema='/opt/moncli/lib/schema/udp' )
 
-    wb.registerBlock ( 'moncli', 'Scheduler', 'scheduler', file='/opt/untitled/lib/cache/scheduler', delay=0 )
-    wb.registerBlock ( 'moncli', 'Executor', 'executor', base='/opt/untitled/lib/repository' )
+    wb.registerBlock ( 'moncli', 'Scheduler', 'scheduler', file='/opt/moncli/lib/cache/scheduler', delay=0 )
+    wb.registerBlock ( 'moncli', 'Executor', 'executor', base='/opt/moncli/lib/repository' )
     wb.registerBlock ( 'moncli', 'Collector', 'collector' )
 
     #INPUT
