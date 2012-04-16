@@ -9,11 +9,3 @@ while (<MEMINFO>){
 	}
 }
 close MEMINFO;
-print "~==.==~\n";
-print "Values in MB:\n";
-open FREE,'/usr/bin/free -t -m||/bin/free -t m|';
-while (<FREE>){
-	print $_;
-}
-close FREE;
-print "\nSource: $0\n";

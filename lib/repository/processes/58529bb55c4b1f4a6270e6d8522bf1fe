@@ -1,0 +1,3 @@
+#! /bin/bash
+echo *raw*
+/bin/ps xoargs|sort

@@ -49,7 +49,7 @@ sub get_content(){
     my $url = shift;
     my $type = shift;
     my @output;
-    unless (defined (@content = split ( /\n/, get "http://$url/metrics"))) {
+    unless (@content = split ( /\n/, get "http://$url/metrics")) {
         return ();
     }
     my $prefix="unknown";
@@ -63,5 +63,3 @@ sub get_content(){
     }
     return @output;
 }
-
-print "Source: $0\n";

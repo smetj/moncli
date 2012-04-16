@@ -49,6 +49,3 @@ foreach (@results){
 for my $key ( sort keys %results){
 	printf "%s:%s\n",$key,$results{$key};
 }
-print "~==.==~\n";
-print join ("",@results);
-print "\nMD5: $0\n";

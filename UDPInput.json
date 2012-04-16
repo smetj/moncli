@@ -1,0 +1,21 @@
+{
+   "destination":{
+      "key":"",
+      "exchange":"moncli_reports"
+   },
+   "request":{
+      "subject":"subject"
+   },
+   "plugin":{
+      "name":"disks",
+      "hash":"38ff93ae8cf2d108e4b53b158ec7c914",
+      "timeout":60,
+      "cycle":1,
+      "parameters":[
+
+      ]
+   },
+   "tags":[
+
+   ]
+}

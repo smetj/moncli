@@ -1,0 +1,6 @@
+#!/bin/bash
+
+load=$(cat /proc/loadavg)
+echo "load.1:$(echo $load|cut -d " " -f 1)"
+echo "load.5:$(echo $load|cut -d " " -f 2)"
+echo "load.15:$(echo $load|cut -d " " -f 3)"

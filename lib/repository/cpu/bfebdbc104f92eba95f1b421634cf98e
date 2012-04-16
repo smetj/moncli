@@ -37,8 +37,3 @@ foreach (reverse(@output)){
         last;
     }
 }
-
-print "~==.==~\n";
-print $title,"\n\n";
-print @output,"\n";
-print "Source: $0\n";

@@ -3,7 +3,7 @@
 #
 #       __init__.py
 #       
-#       Copyright 2011 Jelle Smet <development@smetj.net>
+#       Copyright 2012 Jelle Smet development@smetj.net
 #       
 #       This program is free software; you can redistribute it and/or modify
 #       it under the terms of the GNU General Public License as published by
@@ -20,4 +20,8 @@
 #       Foundation, Inc., 51 Franklin Street, Fifth Floor, Boston,
 #       MA 02110-1301, USA.
 #       
-#
+#       
+
+from moncli import Scheduler
+from moncli import Executor
+from moncli import Collector

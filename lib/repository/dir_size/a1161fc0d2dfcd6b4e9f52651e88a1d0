@@ -1,0 +1,3 @@
+#!/bin/bash
+
+du -s -b $1|perl -n -e '/(\d*)\s*(.*)/ && print "$2:$1\n"'
