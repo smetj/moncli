@@ -22,7 +22,6 @@
 #       
 #      
 
-import gevent
 import logging
 import json
 from copy import deepcopy
@@ -30,14 +29,13 @@ from os import path
 from uuid import uuid4
 from time import strftime, localtime
 from random import randint
-from gevent.queue import Queue
-from wishbone import PrimitiveActor
 from pickle import dump, load
 from hashlib import md5
 from random import randint
-from gevent import sleep
-from gevent import Greenlet
+from gevent import sleep, spawn
+from gevent.queue import Queue
 from gevent_subprocess import gevent_subprocess
+from wishbone.wishbone import PrimitiveActor
 from gevent import monkey; monkey.patch_all()
 
 class Scheduler(PrimitiveActor):
@@ -64,7 +62,7 @@ class Scheduler(PrimitiveActor):
             self.outbox.put(doc)
         else:
             self.docs[doc["request"]["subject"]]=json.dumps(doc)
-            self.schedule_list[doc["request"]["subject"]]=gevent.spawn(self.runner,doc)
+            self.schedule_list[doc["request"]["subject"]]=spawn(self.runner,doc)
 
     def runner(self,doc):
         wait = randint(0, self.delay)
@@ -111,7 +109,7 @@ class Executor(PrimitiveActor):
       
     def consume(self,doc):
         self.logging.info('Executing plugin %s' % doc['plugin']['name'])
-        gevent.spawn(self.do, doc)
+        spawn(self.do, doc)
 
     def do(self, doc):
         command = ("%s/%s/%s %s" % (self.base,doc['plugin']['name'], doc['plugin']['hash'], ' '.join(doc['plugin']['parameters'])))
@@ -120,7 +118,7 @@ class Executor(PrimitiveActor):
         except Exception as err:
             self.logging.warn('Plugin %s does not have a correct filename/hash combination. Reason: %s' % (doc['plugin']['name'], err))
         else:
-            current = gevent.spawn(self.exe, command)
+            current = spawn(self.exe, command)
             current.join(doc['plugin']['timeout'])
             if not current.ready():
                 self.logging.warn('Plugin %s is running too long. Will kill it.' % (command))

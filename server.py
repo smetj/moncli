@@ -1,9 +1,9 @@
 #!/usr/bin/env python
 # -*- coding: utf-8 -*-
 #
-#       server.py
+#       untitled.py
 #       
-#       Copyright 2012 Jelle Smet development@smetj.net
+#       Copyright 2012 Jelle <jelle@indigo>
 #       
 #       This program is free software; you can redistribute it and/or modify
 #       it under the terms of the GNU General Public License as published by
@@ -37,12 +37,12 @@ if __name__ == '__main__':
     wb.registerBroker( host='sandbox', vhost='/', username='guest', password='guest', consume_queue=getfqdn() )
     wb.registerUDPServer ( port='9001' )
     
-    wb.registerBlock ( 'wishbone', 'JSONValidator', 'validateBrokerData', schema='/opt/moncli/lib/schema/broker' )
-    wb.registerBlock ( 'wishbone', 'JSONValidator', 'validateUDPData', schema='/opt/moncli/lib/schema/udp' )
+    wb.registerModule ( 'wishbone.modules', 'JSONValidator', 'validateBrokerData', schema='/opt/moncli/lib/schema/broker' )
+    wb.registerModule ( 'wishbone.modules', 'JSONValidator', 'validateUDPData', schema='/opt/moncli/lib/schema/udp' )
 
-    wb.registerBlock ( 'moncli', 'Scheduler', 'scheduler', file='/opt/moncli/lib/cache/scheduler', delay=0 )
-    wb.registerBlock ( 'moncli', 'Executor', 'executor', base='/opt/moncli/lib/repository' )
-    wb.registerBlock ( 'moncli', 'Collector', 'collector' )
+    wb.registerModule ( 'moncli', 'Scheduler', 'scheduler', file='/opt/moncli/lib/cache/scheduler', delay=0 )
+    wb.registerModule ( 'moncli', 'Executor', 'executor', base='/opt/moncli/lib/repository' )
+    wb.registerModule ( 'moncli', 'Collector', 'collector' )
 
     #INPUT
     #Broker(entryPoint) --> Validator
