@@ -21,11 +21,14 @@
 #       MA 02110-1301, USA.
 #       
 #       
-
 import sys
 sys.path.append('/opt/moncli/lib/modules')
+try:
+    import wishbone
+except ImportError:
+    print "Download and install the wishbone library from https://github.com/smetj/wishbone."
+    sys.exit(1)
 
-import wishbone
 import moncli
 
 from gevent.socket import getfqdn
