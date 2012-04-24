@@ -23,11 +23,13 @@
 #       
 import sys
 sys.path.append('/opt/moncli/lib/modules')
-try:
-    import wishbone
-except ImportError:
-    print "Download and install the wishbone library from https://github.com/smetj/wishbone."
-    sys.exit(1)
+#try:
+from wishbone import wishbone
+from io_modules.broker import Broker
+from io_modules.udpserver import UDPServer
+#except ImportError:
+    #print "Download and install the wishbone library from https://github.com/smetj/wishbone."
+    #sys.exit(1)
 
 import moncli
 
@@ -37,8 +39,9 @@ from gevent.socket import getfqdn
 if __name__ == '__main__':
     
     wb = wishbone.Wishbone()
-    wb.registerBroker( host='sandbox', vhost='/', username='guest', password='guest', consume_queue=getfqdn() )
-    wb.registerUDPServer ( port='9001' )
+    
+    wb.registerModule ( 'wishbone.io_modules', 'Broker', 'broker', host='sandbox', vhost='/', username='guest', password='guest', consume_queue=getfqdn() )
+    wb.registerModule ( 'wishbone.io_modules', 'UDPServer', 'udp_server', port='9001' )  
     
     wb.registerModule ( 'wishbone.modules', 'JSONValidator', 'validateBrokerData', schema='/opt/moncli/lib/schema/broker' )
     wb.registerModule ( 'wishbone.modules', 'JSONValidator', 'validateUDPData', schema='/opt/moncli/lib/schema/udp' )

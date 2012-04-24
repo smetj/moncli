@@ -35,7 +35,7 @@ from random import randint
 from gevent import sleep, spawn
 from gevent.queue import Queue
 from gevent_subprocess import gevent_subprocess
-from wishbone.wishbone import PrimitiveActor
+from wishbone.toolkit import PrimitiveActor
 from gevent import monkey; monkey.patch_all()
 
 class Scheduler(PrimitiveActor):
@@ -59,7 +59,7 @@ class Scheduler(PrimitiveActor):
             self.schedule_list[doc["request"]["subject"]].join()
             del(self.docs[doc["request"]["subject"]])
         if doc["plugin"]["cycle"] == "0":
-            self.outbox.put(doc)
+            self.sendData(doc)
         else:
             self.docs[doc["request"]["subject"]]=json.dumps(doc)
             self.schedule_list[doc["request"]["subject"]]=spawn(self.runner,doc)
@@ -70,10 +70,10 @@ class Scheduler(PrimitiveActor):
         if doc["plugin"]["cycle"] != 0:
             sleep(float(wait))
             while self.block() == True:
-                self.outbox.put(doc)
+                self.sendData(doc)
                 sleep (float(doc["plugin"]["cycle"]))
         else:
-            self.outbox.put(doc)
+            self.sendData(doc)
     
     def shutdown(self):
         self.save()
@@ -125,7 +125,7 @@ class Executor(PrimitiveActor):
                 current.kill()
             else:
                 doc['data']={'raw':current.value}
-                self.outbox.put(doc)     
+                self.sendData(doc)     
     
     def exe(self, command):
         process = gevent_subprocess.Popen(command, shell=True, stdout=gevent_subprocess.PIPE, stderr=gevent_subprocess.PIPE)
@@ -167,7 +167,7 @@ class Collector(PrimitiveActor):
         iso8601 += strftime("%z")
         doc['request']['uuid']=str(uuid4())
         doc['request']['time']=iso8601
-        self.outbox.put((exchange, key, json.dumps(doc)))
+        self.sendData((exchange, key, json.dumps(doc)))
        
     def shutdown(self):
         self.logging.info('Shutdown')
