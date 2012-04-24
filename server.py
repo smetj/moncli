@@ -25,8 +25,6 @@
 from sys import path;path.append('/opt/moncli/lib/modules')
 from gevent.socket import getfqdn
 from wishbone import wishbone
-from io_modules.broker import Broker
-from io_modules.udpserver import UDPServer
 import moncli
 
 
