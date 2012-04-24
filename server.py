@@ -21,19 +21,13 @@
 #       MA 02110-1301, USA.
 #       
 #       
-import sys
-sys.path.append('/opt/moncli/lib/modules')
-#try:
+
+from sys import path;sys.path.append('/opt/moncli/lib/modules')
+from gevent.socket import getfqdn
 from wishbone import wishbone
 from io_modules.broker import Broker
 from io_modules.udpserver import UDPServer
-#except ImportError:
-    #print "Download and install the wishbone library from https://github.com/smetj/wishbone."
-    #sys.exit(1)
-
 import moncli
-
-from gevent.socket import getfqdn
 
 
 if __name__ == '__main__':
