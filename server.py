@@ -22,7 +22,7 @@
 #       
 #       
 
-from sys import path;sys.path.append('/opt/moncli/lib/modules')
+from sys import path;path.append('/opt/moncli/lib/modules')
 from gevent.socket import getfqdn
 from wishbone import wishbone
 from io_modules.broker import Broker
