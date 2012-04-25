@@ -43,6 +43,7 @@ class Scheduler(PrimitiveActor):
 
     def __init__(self, name, block, *args, **kwargs):
         PrimitiveActor.__init__(self, name, block)
+        self.name = name
         self.schedule_list={}
         self.docs={}
         self.file = kwargs.get('file','/tmp/blah')
@@ -50,8 +51,8 @@ class Scheduler(PrimitiveActor):
         self.validate = Queue(None)
         self.load()
    
-    def consume(self, doc):
-        self.schedule(doc)
+    def consume(self, message):
+        self.schedule(message['data'])
         
     def schedule(self, doc):
         if self.schedule_list.has_key(doc["request"]["subject"]):
@@ -70,7 +71,7 @@ class Scheduler(PrimitiveActor):
         if doc["plugin"]["cycle"] != 0:
             sleep(float(wait))
             while self.block() == True:
-                self.sendData(doc)
+                self.sendRaw(doc)
                 sleep (float(doc["plugin"]["cycle"]))
         else:
             self.sendData(doc)
@@ -107,11 +108,12 @@ class Executor(PrimitiveActor):
         PrimitiveActor.__init__(self, name, block)
         self.base = kwargs.get('base','./')
       
-    def consume(self,doc):
-        self.logging.info('Executing plugin %s' % doc['plugin']['name'])
-        spawn(self.do, doc)
+    def consume(self,message):
+        self.logging.info('Executing plugin %s' % message['data']['plugin']['name'])
+        spawn(self.do, message)
 
-    def do(self, doc):
+    def do(self, message):
+        doc = message['data']
         command = ("%s/%s/%s %s" % (self.base,doc['plugin']['name'], doc['plugin']['hash'], ' '.join(doc['plugin']['parameters'])))
         try:
             self.verifyHash("%s/%s/%s" % (self.base,doc['plugin']['name'], doc['plugin']['hash']))
@@ -125,7 +127,7 @@ class Executor(PrimitiveActor):
                 current.kill()
             else:
                 doc['data']={'raw':current.value}
-                self.sendData(doc)     
+                self.sendData(message)
     
     def exe(self, command):
         process = gevent_subprocess.Popen(command, shell=True, stdout=gevent_subprocess.PIPE, stderr=gevent_subprocess.PIPE)
@@ -157,17 +159,16 @@ class Collector(PrimitiveActor):
     def __init__(self, name, block, *args, **kwargs):
         PrimitiveActor.__init__(self, name, block)
       
-    def consume(self,doc):
-        doc = deepcopy(doc)
-        exchange = doc['destination']['exchange']
-        key = doc['destination']['key']
-        del(doc['destination'])
+    def consume(self,message):
+        message['header']['broker_exchange'] = message['data']['destination']['exchange']
+        message['header']['broker_key'] = message['data']['destination']['key']
+        del(message['data']['destination'])
         here_now = localtime()
         iso8601 = strftime("%Y-%m-%dT%H:%M:%S",here_now)
         iso8601 += strftime("%z")
-        doc['request']['uuid']=str(uuid4())
-        doc['request']['time']=iso8601
-        self.sendData((exchange, key, json.dumps(doc)))
+        message['data']['request']['uuid']=str(uuid4())
+        message['data']['request']['time']=iso8601
+        self.sendData(message)
        
     def shutdown(self):
         self.logging.info('Shutdown')

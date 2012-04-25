@@ -35,8 +35,9 @@ if __name__ == '__main__':
     wb.registerModule ( ('wishbone.io_modules', 'Broker', 'broker'), host='sandbox', vhost='/', username='guest', password='guest', consume_queue=getfqdn() )
     wb.registerModule ( ('wishbone.io_modules', 'UDPServer', 'udp_server'), port='9001' )  
     
-    wb.registerModule ( ('wishbone.modules', 'JSONValidator', 'validateBrokerData'), schema='/opt/moncli/lib/schema/broker' )
-    wb.registerModule ( ('wishbone.modules', 'JSONValidator', 'validateUDPData'), schema='/opt/moncli/lib/schema/udp' )
+    wb.registerModule ( ('wishbone.modules', 'JSONValidator', 'validateBrokerData'), schema='/opt/moncli/lib/schema/broker', convert=True )
+    wb.registerModule ( ('wishbone.modules', 'JSONValidator', 'validateUDPData'), schema='/opt/moncli/lib/schema/udp', convert=True )
+    wb.registerModule ( ('wishbone.modules', 'Compressor', 'compressor') )
 
     wb.registerModule ( ('moncli', 'Scheduler', 'scheduler'), file='/opt/moncli/lib/cache/scheduler', delay=0 )
     wb.registerModule ( ('moncli', 'Executor', 'executor'), base='/opt/moncli/lib/repository' )
@@ -64,9 +65,13 @@ if __name__ == '__main__':
     #Validator --> Collector
     wb.connect (wb.validateUDPData.outbox, wb.collector.inbox)
     
-    #OUTPUT
-    #Collector --> Broker(exitPoint)
+    #Collector -->  Compressor
+    #wb.connect (wb.collector.outbox, wb.compressor.inbox)
     wb.connect (wb.collector.outbox, wb.broker.outbox)
+    
+    #OUTPUT
+    #compressor --> Broker(exitPoint)
+    #wb.connect (wb.compressor.outbox, wb.broker.outbox)
     
     #Start your engines
     try:
