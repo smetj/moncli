@@ -66,12 +66,11 @@ if __name__ == '__main__':
     wb.connect (wb.validateUDPData.outbox, wb.collector.inbox)
     
     #Collector -->  Compressor
-    #wb.connect (wb.collector.outbox, wb.compressor.inbox)
-    wb.connect (wb.collector.outbox, wb.broker.outbox)
+    wb.connect (wb.collector.outbox, wb.compressor.inbox)
     
     #OUTPUT
     #compressor --> Broker(exitPoint)
-    #wb.connect (wb.compressor.outbox, wb.broker.outbox)
+    wb.connect (wb.compressor.outbox, wb.broker.outbox)
     
     #Start your engines
     try:

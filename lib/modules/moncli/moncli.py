@@ -39,7 +39,13 @@ from wishbone.toolkit import PrimitiveActor
 from gevent import monkey; monkey.patch_all()
 
 class Scheduler(PrimitiveActor):
-    '''A scheduler schedules incoming requests, loads and saves scheduled jobs to disk for later retrieval.'''
+    '''A custom WishBone module resubmits messages back to the validate queue at the interval defined in message['data']['plugin']['cycle'].
+    
+    The Scheduler can save and load the schedulers state from disk.
+    
+    This module accepts 2 parameters:
+        file:   The location of the scheduler state file.
+        delay:  The maximum value for choosing a random initial delay in order to spread multiple checks.'''
 
     def __init__(self, name, block, *args, **kwargs):
         PrimitiveActor.__init__(self, name, block)
@@ -52,9 +58,13 @@ class Scheduler(PrimitiveActor):
         self.load()
    
     def consume(self, message):
+        '''Executed for each incoming message.'''
+        
         self.schedule(message['data'])
         
     def schedule(self, doc):
+        '''Manages the scheduling schema for each incoming message.'''
+        
         if self.schedule_list.has_key(doc["request"]["subject"]):
             self.schedule_list[doc["request"]["subject"]].kill()
             self.schedule_list[doc["request"]["subject"]].join()
@@ -66,6 +76,8 @@ class Scheduler(PrimitiveActor):
             self.schedule_list[doc["request"]["subject"]]=spawn(self.runner,doc)
 
     def runner(self,doc):
+        '''Each scheduled message is a new backgrounded GreenThread with an interval sleep.  This function writes the the outbox queue.'''
+        
         wait = randint(0, self.delay)
         self.logging.info( 'Generate request %s with a delay of %s seconds.' % (doc["request"]["subject"], wait))
         if doc["plugin"]["cycle"] != 0:
@@ -77,10 +89,14 @@ class Scheduler(PrimitiveActor):
             self.sendData(doc)
     
     def shutdown(self):
+        '''When called during shutdown will trigger the save() function.'''
+        
         self.save()
         self.logging.info('Shutdown')
     
     def save(self):
+        '''Actually saves the schedule to disk.'''
+        
         try:
             output = open(self.file, 'wb')
             dump(self.docs, output)
@@ -90,6 +106,7 @@ class Scheduler(PrimitiveActor):
             self.logging.warn('There was a problem saving the config. Reason: %s.' % (err))
     
     def load(self):
+        '''Loads the schedule from disk.'''
         try:
             input = open(self.file, 'r')
             data = load(input)
@@ -102,17 +119,42 @@ class Scheduler(PrimitiveActor):
 
 
 class Executor(PrimitiveActor):
-    '''A executes incoming requests.'''
+    '''A custom WishBone module which executes a shell command and completes the message['data'] structure with its results.
+    
+    The Executor expects message["data"]["plugin] to contain:
+    
+              "name":"disks",
+              "hash":"38ff93ae8cf2d108e4b53b158ec7c914",
+              "timeout":60,
+              "cycle":1,
+              "parameters":[
+
+              ]
+    
+    name:       The name of the directory which contains the actual plugin.
+    hash:       The actual filename of the plugin to execute.  The full path of the plugin would be /base/name/hash
+    timeout:    The maximum amount of seconds a plugin is allowed to run before its killed.
+    cycle:      The amount in seconds that the Scheduler has to repeat this message.
+    parameters: A list of all space separated parameters used to executed the plugin.
+    
+    This module accepts 1 parameter:
+    
+        base:   The location of the directory containing the plugins to execute.
+
+    '''
 
     def __init__(self, name, block, *args, **kwargs):
         PrimitiveActor.__init__(self, name, block)
         self.base = kwargs.get('base','./')
       
     def consume(self,message):
+        '''Executed for each incoming message.'''
+        
         self.logging.info('Executing plugin %s' % message['data']['plugin']['name'])
         spawn(self.do, message)
 
     def do(self, message):
+        'Actually executes the plugin.'''
         doc = message['data']
         command = ("%s/%s/%s %s" % (self.base,doc['plugin']['name'], doc['plugin']['hash'], ' '.join(doc['plugin']['parameters'])))
         try:
@@ -130,6 +172,8 @@ class Executor(PrimitiveActor):
                 self.sendData(message)
     
     def exe(self, command):
+        '''Is executed by do() into a background GreenThread and handles all the subprocess communication.'''
+        
         process = gevent_subprocess.Popen(command, shell=True, stdout=gevent_subprocess.PIPE, stderr=gevent_subprocess.PIPE)
         output=[]
         for line in process.stdout.readlines():
@@ -141,6 +185,8 @@ class Executor(PrimitiveActor):
         return output
              
     def verifyHash(self, fullpath):
+        '''Checks the actual hash of the file against its filename.'''
+        
         plugin = open(fullpath,'r')
         plugin_hash = md5()
         plugin_hash.update((''.join(plugin.readlines())))
@@ -150,16 +196,16 @@ class Executor(PrimitiveActor):
             raise Exception ( 'Plugin filename does not match its hash value.' )
             self.logging.warning ( 'Plugin filename %s does not match its hash value %s.'%(file,plugin_hash.hexdigest() ) )
 
-    def shutdown(self):
-        self.logging.info('Shutdown')
-
 
 class Collector(PrimitiveActor):
-    
+    '''A custom WishBone module which extends the incoming message with additional data.'''
+        
     def __init__(self, name, block, *args, **kwargs):
         PrimitiveActor.__init__(self, name, block)
       
     def consume(self,message):
+        '''Executed for each incoming message.'''
+        
         message['header']['broker_exchange'] = message['data']['destination']['exchange']
         message['header']['broker_key'] = message['data']['destination']['key']
         del(message['data']['destination'])
@@ -169,6 +215,3 @@ class Collector(PrimitiveActor):
         message['data']['request']['uuid']=str(uuid4())
         message['data']['request']['time']=iso8601
         self.sendData(message)
-       
-    def shutdown(self):
-        self.logging.info('Shutdown')
