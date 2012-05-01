@@ -47,8 +47,8 @@ class Scheduler(PrimitiveActor):
         file:   The location of the scheduler state file.
         delay:  The maximum value for choosing a random initial delay in order to spread multiple checks.'''
 
-    def __init__(self, name, block, *args, **kwargs):
-        PrimitiveActor.__init__(self, name, block)
+    def __init__(self, name, *args, **kwargs):
+        PrimitiveActor.__init__(self, name)
         self.name = name
         self.schedule_list={}
         self.docs={}
@@ -143,8 +143,8 @@ class Executor(PrimitiveActor):
 
     '''
 
-    def __init__(self, name, block, *args, **kwargs):
-        PrimitiveActor.__init__(self, name, block)
+    def __init__(self, name, *args, **kwargs):
+        PrimitiveActor.__init__(self, name)
         self.base = kwargs.get('base','./')
       
     def consume(self,message):
@@ -200,8 +200,8 @@ class Executor(PrimitiveActor):
 class Collector(PrimitiveActor):
     '''A custom WishBone module which extends the incoming message with additional data.'''
         
-    def __init__(self, name, block, *args, **kwargs):
-        PrimitiveActor.__init__(self, name, block)
+    def __init__(self, name, *args, **kwargs):
+        PrimitiveActor.__init__(self, name)
       
     def consume(self,message):
         '''Executed for each incoming message.'''
