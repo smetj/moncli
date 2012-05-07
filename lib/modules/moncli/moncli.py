@@ -90,7 +90,7 @@ class Scheduler(PrimitiveActor):
     
     def shutdown(self):
         '''When called during shutdown will trigger the save() function.'''
-        
+        self.lock=False
         self.save()
         self.logging.info('Shutdown')
     
