@@ -30,62 +30,53 @@ from time import sleep
 import logging
 import moncli
 
-def setup():
-    
-    wb = Wishbone()
-                    
-    wb.registerModule ( ('wishbone.io_modules', 'Broker', 'broker'), host='sandbox', vhost='/', username='guest', password='guest', consume_queue=getfqdn() )
-    wb.registerModule ( ('wishbone.io_modules', 'UDPServer', 'udp_server'), port='9001' )  
 
-    wb.registerModule ( ('wishbone.modules', 'JSONValidator', 'validateBrokerData'), schema='/opt/moncli/lib/schema/broker', convert=True )
-    wb.registerModule ( ('wishbone.modules', 'JSONValidator', 'validateUDPData'), schema='/opt/moncli/lib/schema/udp', convert=True )
-    wb.registerModule ( ('wishbone.modules', 'Compressor', 'compressor') )
-
-    wb.registerModule ( ('moncli', 'Scheduler', 'scheduler'), file='/opt/moncli/lib/cache/scheduler', delay=0 )
-    wb.registerModule ( ('moncli', 'Executor', 'executor'), base='/opt/moncli/lib/repository' )
-    wb.registerModule ( ('moncli', 'Collector', 'collector') )
-
-    #INPUT
-    #Broker(entryPoint) --> Validator
-    wb.connect (wb.broker.inbox, wb.validateBrokerData.inbox)
-
-    #Validator --> Scheduler
-    wb.connect (wb.validateBrokerData.outbox, wb.scheduler.inbox)
-        
-    #Scheduler --> Executor
-    wb.connect (wb.scheduler.validate, wb.validateBrokerData.inbox)
-    wb.connect (wb.scheduler.outbox, wb.executor.inbox)
-
-    #Executor --> Collector
-    wb.connect (wb.executor.outbox, wb.collector.inbox)
-      
-    #INPUT
-    #From UDP input to Broker output
-    #UDPserver(entrypoint) --> Validator
-    wb.connect (wb.udp_server.inbox, wb.validateUDPData.inbox)
-
-    #Validator --> Collector
-    wb.connect (wb.validateUDPData.outbox, wb.collector.inbox)
-
-    #Collector -->  Compressor
-    wb.connect (wb.collector.outbox, wb.compressor.inbox)
-
-    #OUTPUT
-    #compressor --> Broker(exitPoint)
-    wb.connect (wb.compressor.outbox, wb.broker.outbox)
-    
-    wb.start()
 
 if __name__ == '__main__':
-    
-    server = Server(instances=4, setup=setup)
-    #server.start()
-    setup()
-    
-    
-    #Start your engines
-    #try:
-    #    wb.start()
-    #except KeyboardInterrupt:
-    #    wb.stop()
+    def setup():    
+        wb = Wishbone()
+                        
+        wb.registerModule ( ('wishbone.io_modules', 'Broker', 'broker'), host='sandbox', vhost='/', username='guest', password='guest', consume_queue=getfqdn() )
+        wb.registerModule ( ('wishbone.io_modules', 'UDPServer', 'udp_server'), port='9001' )  
+
+        wb.registerModule ( ('wishbone.modules', 'JSONValidator', 'validateBrokerData'), schema='/opt/moncli/lib/schema/broker', convert=True )
+        wb.registerModule ( ('wishbone.modules', 'JSONValidator', 'validateUDPData'), schema='/opt/moncli/lib/schema/udp', convert=True )
+        wb.registerModule ( ('wishbone.modules', 'Compressor', 'compressor') )
+
+        wb.registerModule ( ('moncli', 'Scheduler', 'scheduler'), file='/opt/moncli/lib/cache/scheduler', delay=0 )
+        wb.registerModule ( ('moncli', 'Executor', 'executor'), base='/opt/moncli/lib/repository' )
+        wb.registerModule ( ('moncli', 'Collector', 'collector') )
+
+        #INPUT
+        #Broker(entryPoint) --> Validator
+        wb.connect (wb.broker.inbox, wb.validateBrokerData.inbox)
+
+        #Validator --> Scheduler
+        wb.connect (wb.validateBrokerData.outbox, wb.scheduler.inbox)
+            
+        #Scheduler --> Executor
+        wb.connect (wb.scheduler.validate, wb.validateBrokerData.inbox)
+        wb.connect (wb.scheduler.outbox, wb.executor.inbox)
+
+        #Executor --> Collector
+        wb.connect (wb.executor.outbox, wb.collector.inbox)
+          
+        #INPUT
+        #From UDP input to Broker output
+        #UDPserver(entrypoint) --> Validator
+        wb.connect (wb.udp_server.inbox, wb.validateUDPData.inbox)
+
+        #Validator --> Collector
+        wb.connect (wb.validateUDPData.outbox, wb.collector.inbox)
+
+        #Collector -->  Compressor
+        wb.connect (wb.collector.outbox, wb.compressor.inbox)
+
+        #OUTPUT
+        #compressor --> Broker(exitPoint)
+        wb.connect (wb.compressor.outbox, wb.broker.outbox)
         
+        wb.start()
+        
+    server = Server(instances=1, setup=setup, daemonize=True, name='Wishbone')
+    server.start()
