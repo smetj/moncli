@@ -33,6 +33,8 @@ import moncli
 
 
 if __name__ == '__main__':
+    #Read settings from command line
+    
     def setup():    
         wb = Wishbone()
                         
@@ -78,5 +80,6 @@ if __name__ == '__main__':
         
         wb.start()
         
-    server = Server(instances=1, setup=setup, daemonize=True, name='Wishbone')
+    server = Server(instances=1, setup=setup, daemonize=False, name='Moncli')
     server.start()
+    #Server.sendSIGINT('/tmp/Wishbone.pid')
